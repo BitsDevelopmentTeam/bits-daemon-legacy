@@ -324,7 +324,8 @@ class BitsService:
                     p = msg.split(" ")
                     user_id = int(p[1])
                     b64_msg = p[2]
-                    b64decode(b64_msg) #Useful for checking sql injections from fonera (if injection it fails)
+                    plainmsg=b64decode(b64_msg) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
+                    b64_msg=b64encode(plainmsg) #Goodbye injection padding
                     #Mi e' arrivato il testo
                     #Salva il testo sul db
                     if self.db_check_user_existence(user_id):
