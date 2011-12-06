@@ -43,6 +43,7 @@ class BitsService:
         self.srv_port = 3389        #Scelta perche' aperta dal politecnico
         self.srv_bind_address = ""
         self.srv_max_wait_sock = 5
+        self.src_max_conn = 300
         
         
         self.php_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -399,9 +400,12 @@ class BitsService:
                 if event == self.srv_sock: 
                     if DEBUG: print "[Debug] Internet accept socket event"
                     conn,addr = self.srv_sock.accept()
-                    self.events.append(conn)
-                    self.connections.append(conn)
-                    self.send_client_msg(conn, self.fonera.statusString())
+                    if len(self.connections)<self.src_max_conn:
+                        self.events.append(conn)
+                        self.connections.append(conn)
+                        self.send_client_msg(conn, self.fonera.statusString())
+                    else:
+                        conn.close()
                 
                 elif event == self.php_sock:
                     if DEBUG: print "[Debug] PHP accept socket event"
