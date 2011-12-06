@@ -40,7 +40,7 @@ class BitsService:
         #print config.get('push-server', 'port')
         
         self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.srv_port = 56344
+        self.srv_port = 3389        #Scelta perche' aperta dal politecnico
         self.srv_bind_address = ""
         self.srv_max_wait_sock = 5
         
