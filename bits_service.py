@@ -98,6 +98,7 @@ class BitsService:
         except:
             print "[Error] While opening database"
             raise SystemExit
+    
             
     def db_get_status(self):
         c = self.db.cursor()
@@ -236,10 +237,11 @@ class BitsService:
             if msg.startswith("status "):
                 # La fonera mi avvisa del cambio di stato della sede
                 try:
-                    self.fonera.status = bool(int(msg.split("status ")[-1]))
+                    status = bool(int(msg.split("status ")[-1]))
                     
-                    if self.db_get_status() != self.fonera.status:
-                        self.db_change_status(self.fonera.status, False) # Aggiorno il database con il nuovo status inviato dalla fonera
+                    if self.db_get_status() != status:
+                        self.db_change_status(status, False) # Aggiorno il database con il nuovo status inviato dalla fonera
+                        self.fonera.status = status
                         self.broadcast_message(self.fonera.statusString()) #Invio a tutti i client push il nuovo status della sede ricevuto dalla fonera
                 except:
                     # Se fallisce la conversione in bool o db o broadcast
