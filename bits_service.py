@@ -66,7 +66,7 @@ class Database:
                 raise SystemExit
         return cursor
     
-     def status(self, s = None, fromWebsite = False): 
+    def status(self, s = None, fromWebsite = False): 
         if s == None:
             cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
             if cursor.fetchall() == ((1,),): #in questo modo Se il database e' vuoto ritorna False
