@@ -6,140 +6,17 @@
 
 # TODO:
 # Non accetta messaggi dal socket di lunghezza superiore a 2048..
-# Si possono collegare due fonere!!! attenzione!
 # Leggere binding/config da un file di configurazione
 
 import socket
 import select
-import time
-import MySQLdb
 import ConfigParser
 from sys import exc_info
 from base64 import b64encode,b64decode
 
-DEBUG = True
-DEBUG_LEVEL = 0
-
-timestamp = lambda : time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-
-def debugMessage(msg, level=0):
-    if DEBUG and (level <= DEBUG_LEVEL):
-        print("[Debug] %s" % msg)
-
-def errorMessage(msg, fatal=True):
-    print("[Error] %s" % msg)
-    if fatal:
-        raise SystemExit
-        
-        
-class Database:
-    def __init__(self, user, password, database, host):
-        self.user = user
-        self.passwd = password
-        self.db_name = database
-        self.host = host
-        self.connection = None
-        
-        self.connect()
-    
-    def connect(self):
-        try:
-            self.connection = MySQLdb.connect(host = self.host, user = self.user,
-                                          passwd = self.passwd, db = self.db_name)
-        except:
-            errorMessage("Connection to MySQL database fail")
-        
-    def query(self, sql, retry = False, params = None, many = False): 
-        try:
-            cursor = self.connection.cursor()
-            if not many:
-                cursor.execute(sql)
-            else:
-                cursor.executemany(sql, params)
-            self.connection.commit()
-        except (AttributeError, MySQLdb.OperationalError):
-            if not retry:
-                self.connect()
-                self.query(sql, retry=True)
-            else:
-                errorMessage("SQL query fail")
-                raise SystemExit
-        return cursor
-    
-    def status(self, s = None, fromWebsite = False): 
-        if s == None:
-            cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
-            if cursor.fetchall() == ((1,),): #in questo modo Se il database e' vuoto ritorna False
-                return True
-            else:
-                return False
-        else:
-            curr_status = self.status()
-            if curr_status != s:
-                debugMessage("Changing status in database")
-                self.query(
-                    """INSERT INTO Status (timestamp, value, modifiedby)
-                    VALUES (%s, %s, %s)""",
-                    params=[
-                    (timestamp(), int(s), int(fromWebsite))
-                    ], many=True)
-                
-                if s == False:
-                    self.force_logout_all()
-                return True
-            else:
-                return False
-
-    def force_logout_all(self): 
-        self.query("""UPDATE Presence SET logout = '%s' WHERE logout is null""" % timestamp())
-
-    def user_enter(self, uid, enter = True): 
-        if self.user_exists(uid):
-            if enter:
-                if not self.user_logged_in(uid):
-                    self.query("""INSERT INTO Presence (userid, login, logout)
-                                        VALUES (%s, %s, NULL)""", args=[
-                                (uid, timestamp())
-                                ], many=True)
-                    return (True,True)
-                else:
-                    return (True,False)
-            else:
-                if self.user_logged_in(uid):
-                    self.query(
-                        """UPDATE Presence SET logout = '%s' WHERE userid = %d AND logout is null"""
-                        % (timestamp(), uid))
-                    return (True,True)
-                else:
-                    return (True,False)
-        else:
-            return (False,None)       
-                
-            
-    def user_exists(self, uid): 
-        cursor = self.query("""SELECT COUNT(*) FROM Users WHERE userid = %s""" % uid)
-        return bool(cursor.fetchall()[0][0])
-
-    def user_logged_in(self, uid): 
-        debugMessage("Logging out all logged users")
-        cursor = self.query("""SELECT COUNT(*) FROM Presence WHERE logout is null AND userid = %s""" % uid)
-        return bool(cursor.fetchall()[0][0])
-
-    def store_temperature(self, value, sensor_id): 
-        cursor = self.query(
-            """INSERT INTO Temperature (timestamp, sensor, value)
-            VALUES (%s, %s, %s)""",
-            params=[
-            (timestamp(), int(sensor_id), float(value))
-            ], many=True )
-
-    def store_msg(self, uid, b64_msg): 
-        self.query(
-            """INSERT INTO Message (userid, timestamp, message)
-                            VALUES (%s, %s, %s)""",
-            [
-            (uid, timestamp(), b64_msg)
-            ])
+import pushserver
+import database
+from common import *
 
 
 class FoneraStatus:
@@ -162,12 +39,6 @@ class BitsService:
         #config.read('bits_service.conf')
         #print config.get('push-server', 'port')
         
-        self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.srv_port = 3389        #Scelta perche' aperta dal politecnico
-        self.srv_bind_address = ""
-        self.srv_max_wait_sock = 5
-        self.src_max_conn = 300
-        
         
         self.php_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.php_port = 56343
@@ -185,19 +56,22 @@ class BitsService:
         
         self.fonera = FoneraStatus()
         
-        self.connections = []
         self.php_connections = []
         self.events = []
         
-        self.db = Database("bits", "<db-password-here>", "bitsdb", "localhost")
+        self.db = database.Database("bits", "<db-password-here>", "bitsdb", "localhost")
         self.fonera.status = self.db.status()
+        
+        self.standard_push = pushserver.StandardPush(bind_address="", port = 3389,
+                 maxlisten = 5, maxconn = 300, useThreads = False,
+                 start_status = self.fonera.status)
+        self.standard_push.start()
+        
+        #self.websocket_push = pushserver.Websocket()
+        #self.websocket_push.start()
+
     
     def server(self):
-        
-        self.srv_sock.bind((self.srv_bind_address, self.srv_port))
-        self.srv_sock.listen(self.srv_max_wait_sock)
-        self.srv_sock.setblocking(0)
-        self.events.append(self.srv_sock)
         
         self.php_sock.bind((self.php_bind_address, self.php_port))
         self.php_sock.listen(self.php_max_wait_sock)
@@ -211,23 +85,11 @@ class BitsService:
     
         
     
-    def disconnect(self):
-        #TODO: Broken. Fixme
-        # Disconnect all push clients and close server
-        for client in self.connections:
-            try:
-                client.close()
-            except:
-                pass
-            
+    def disconnect(self):   
         # Brutally closes fonera's socket
         self.fonera_sock.close()
-        
         # Brutally closes php socket
         self.php_sock.close()
-        
-        self.srv_sock.close()
-        
         for event in self.events:
             try:
                 event.close()
@@ -243,28 +105,9 @@ class BitsService:
         except:
             pass
         
-    def broadcast_message(self, msg):
-        msg += "\n"
-        debugMessage("Sending broadcast to client")
-        for c in self.connections:
-            try:
-                c.send(msg)
-            except:
-                errorMessage("Failed a message to a client", False)
-                c.close()
-                self.connections.remove(c)
-                self.events.remove(c)
-    
-    def send_client_msg(self, conn, msg):
-        try:
-            conn.send(msg+"\n")
-        except:
-            self.events.remove(conn)
-            self.connections.remove(conn)
-            try:
-                conn.close()
-            except:
-                pass
+    def push_clients_alert(self, status):
+        self.standard_push.change_status(status)
+        #self.websocket_push.change_status(status)
                 
     def send_fonera_msg(self, msg):
         try:
@@ -296,7 +139,7 @@ class BitsService:
                     
                     if self.db.status(status, False): #Se ritorna True lo stato è stato cambiato in quello scelto
                         self.fonera.status = status
-                        self.broadcast_message(self.fonera.statusString())
+                        self.push_clients_alert(status)
                     else:
                         #Siamo già nello stato in cui vuoi cambiare!
                         debugMessage("Fonera trying to change to actual status instead of new one")
@@ -355,7 +198,7 @@ class BitsService:
                         self.db.status(status, True) # Aggiorno il database con il nuovo status inviato da php
                         self.fonera.status = status
                         self.fonera_change_status(status) #Avviso la fonera del cambio di stato
-                        self.broadcast_message(self.fonera.statusString())
+                        self.push_clients_alert(status)
                 except:
                     debugMessage("Recived invalid status message from PHP")
                     self.php_disconnect_client(conn)
@@ -449,22 +292,12 @@ class BitsService:
         self.server()
     
         while self.runnable:
-            in_ready,out_ready,except_ready = select.select(self.events,[],[])
+            in_ready, out_ready, except_ready = select.select(self.events,[],[])
             debugMessage("Select activated")
             
             for event in in_ready: 
-            
-                if event == self.srv_sock: 
-                    debugMessage("Internet accept socket event")
-                    conn, addr = self.srv_sock.accept()
-                    if len(self.connections) < self.src_max_conn:
-                        self.events.append(conn)
-                        self.connections.append(conn)
-                        self.send_client_msg(conn, self.fonera.statusString())
-                    else:
-                        conn.close()
-                
-                elif event == self.php_sock:
+
+                if event == self.php_sock:
                     debugMessage("PHP accept socket event")
                     conn,addr = self.php_sock.accept()
                     self.events.append(conn)
@@ -485,12 +318,6 @@ class BitsService:
                     debugMessage("Fonera recv socket event")
                     self.fonera_command_handler()
                 
-                elif event in self.connections:
-                    debugMessage("Internet recv socket event")
-                    # Disconnects clients who sends something
-                    event.close()
-                    self.connections.remove(event)
-                    self.events.remove(event)
                     
                 elif event in self.php_connections:
                     debugMessage("PHP recv socket event")
