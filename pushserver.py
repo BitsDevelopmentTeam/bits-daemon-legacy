@@ -9,11 +9,11 @@ from common import *
 class StandardPush(threading.Thread):
     def __init__(self, bind_address, port, maxlisten = 5, maxconn = 300,
                  useThreads = False, start_status=None):
-                 
+        threading.Thread.__init__(self)
         self.srv_address = bind_address
         self.srv_port = port
         self.srv_maxlisten = maxlisten
-        self.srv_maxconn = maxconn
+        self.srv_max_conn = maxconn
         self.useThreads = useThreads
         self.status = start_status
         
@@ -81,7 +81,11 @@ class StandardPush(threading.Thread):
             except:
                 pass
         for conn in self.events:
-            
+            try:
+                conn.close()
+            except:
+                pass
+
     
     def run(self):
         self.init_service()
@@ -97,7 +101,7 @@ class StandardPush(threading.Thread):
                     if event == self.srv_sock: 
                         debugMessage("Internet accept socket event")
                         conn, addr = self.srv_sock.accept()
-                        if len(self.connections) < self.src_max_conn:
+                        if len(self.connections) < self.srv_max_conn:
                             self.events.append(conn)
                             self.connections.append(conn)
                             self.send_client_msg(conn, self.statusString())
