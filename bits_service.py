@@ -1,4 +1,6 @@
 #!/usr/bin/python2
+# -*- coding: utf-8 -*-
+
 
 # Beta version!
 
@@ -16,8 +18,129 @@ from sys import exc_info
 from base64 import b64encode,b64decode
 
 DEBUG = True
+DEBUG_LEVEL = 0
 
 timestamp = lambda : time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+
+def debugMessage(msg, level=0):
+    if DEBUG and (level <= DEBUG_LEVEL):
+        print("[Debug] %s" % msg)
+
+def errorMessage(msg, fatal=True):
+    print("[Error] %s" % msg)
+    if fatal:
+        raise SystemExit
+        
+        
+class Database:
+    def __init__(self, user, password, database, host):
+        self.user = user
+        self.passwd = password
+        self.db_name = database
+        self.host = host
+        self.connection = None
+        
+        self.connect()
+    
+    def connect(self):
+        try:
+            self.connection = MySQLdb.connect(host = self.host, user = self.user,
+                                          passwd = self.passwd, db = self.db_name)
+        except:
+            errorMessage("Connection to MySQL database fail")
+        
+    def query(self, sql, retry = False, params = None, many = False): 
+        try:
+            cursor = self.connection.cursor()
+            if not many:
+                cursor.execute(sql)
+            else:
+                cursor.executemany(sql, params)
+            self.connection.commit()
+        except (AttributeError, MySQLdb.OperationalError):
+            if not retry:
+                self.connect()
+                self.query(sql, retry=True)
+            else:
+                errorMessage("SQL query fail")
+                raise SystemExit
+        return cursor
+    
+     def status(self, s = None, fromWebsite = False): 
+        if s == None:
+            cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
+            if cursor.fetchall() == ((1,),): #in questo modo Se il database e' vuoto ritorna False
+                return True
+            else:
+                return False
+        else:
+            curr_status = self.status()
+            if curr_status != s:
+                debugMessage("Changing status in database")
+                self.query(
+                    """INSERT INTO Status (timestamp, value, modifiedby)
+                    VALUES (%s, %s, %s)""",
+                    params=[
+                    (timestamp(), int(s), int(fromWebsite))
+                    ], many=True)
+                
+                if s == False:
+                    self.force_logout_all()
+                return True
+            else:
+                return False
+
+    def force_logout_all(self): 
+        self.query("""UPDATE Presence SET logout = '%s' WHERE logout is null""" % timestamp())
+
+    def user_enter(self, uid, enter = True): 
+        if self.user_exists(uid):
+            if enter:
+                if not self.user_logged_in(uid):
+                    self.query("""INSERT INTO Presence (userid, login, logout)
+                                        VALUES (%s, %s, NULL)""", args=[
+                                (uid, timestamp())
+                                ], many=True)
+                    return (True,True)
+                else:
+                    return (True,False)
+            else:
+                if self.user_logged_in(uid):
+                    self.query(
+                        """UPDATE Presence SET logout = '%s' WHERE userid = %d AND logout is null"""
+                        % (timestamp(), uid))
+                    return (True,True)
+                else:
+                    return (True,False)
+        else:
+            return (False,None)       
+                
+            
+    def user_exists(self, uid): 
+        cursor = self.query("""SELECT COUNT(*) FROM Users WHERE userid = %s""" % uid)
+        return bool(cursor.fetchall()[0][0])
+
+    def user_logged_in(self, uid): 
+        debugMessage("Logging out all logged users")
+        cursor = self.query("""SELECT COUNT(*) FROM Presence WHERE logout is null AND userid = %s""" % uid)
+        return bool(cursor.fetchall()[0][0])
+
+    def store_temperature(self, value, sensor_id): 
+        cursor = self.query(
+            """INSERT INTO Temperature (timestamp, sensor, value)
+            VALUES (%s, %s, %s)""",
+            params=[
+            (timestamp(), int(sensor_id), float(value))
+            ], many=True )
+
+    def store_msg(self, uid, b64_msg): 
+        self.query(
+            """INSERT INTO Message (userid, timestamp, message)
+                            VALUES (%s, %s, %s)""",
+            [
+            (uid, timestamp(), b64_msg)
+            ])
+
 
 class FoneraStatus:
     def __init__(self):
@@ -54,7 +177,7 @@ class BitsService:
         
         self.fonera_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.fonera_port = 56345
-        self.fonera_bind_address = ""
+        self.fonera_bind_address = "10.0.0.1"
         self.fonera_max_wait_sock = 1
         self.fonera_conn = None
         
@@ -66,10 +189,8 @@ class BitsService:
         self.php_connections = []
         self.events = []
         
-        self.mysql_host = "localhost"
-        self.db_user = "bits"
-        self.db_name = "bitsdb"
-        self.db_passwd = "<db-password-here>"
+        self.db = Database("bits", "<db-password-here>", "bitsdb", "localhost")
+        self.fonera.status = self.db.status()
     
     def server(self):
         
@@ -88,93 +209,16 @@ class BitsService:
         self.fonera_sock.setblocking(0)
         self.events.append(self.fonera_sock)
     
-    
-    def db_init(self):
-        try:
-            self.db = MySQLdb.connect(host=self.mysql_host, user=self.db_user, 
-                                      passwd=self.db_passwd, db=self.db_name)
-            
-            self.fonera.status = self.db_get_status()
-        except:
-            print "[Error] While opening database"
-            raise SystemExit
-    
-            
-    def db_get_status(self):
-        c = self.db.cursor()
-        c.execute("""SELECT  value FROM Status ORDER BY timestamp DESC LIMIT 1""")
-        if c.fetchall() == ((1,),): #valutare anche il caso in cui la tabella di status e' vuota.
-            return True
-        else:
-            return False
-    
-    def db_change_status(self, status, fromWebsite):
-        if DEBUG: print "Changing status in database"
-        
-        
-        c = self.db.cursor()
-        c.executemany(
-            """INSERT INTO Status (timestamp, value, modifiedby)
-            VALUES (%s, %s, %s)""",
-            [
-            (timestamp(), int(status), int(fromWebsite))
-            ] )
-        self.db.commit()
-        #Controlla se c'e' gente che non si e' sloggata e sloggala tu.
-        c = self.db.cursor()
-        c.execute("""UPDATE Presence SET logout = '%s' WHERE logout is null""" % timestamp())
-        self.db.commit()
-        
-        
-    def db_store_temperature(self, value, sensor):
-        c = self.db.cursor()
-        c.executemany(
-        """INSERT INTO Temperature (timestamp, sensor, value)
-        VALUES (%s, %s, %s)""",
-        [
-        (timestamp(), int(sensor), float(value))
-        ] )
-        self.db.commit()
-    
-    def db_check_user_existence(self, user):
-        c = self.db.cursor()
-        c.execute("""SELECT userid FROM Users""")
-        return (user in [i[0] for i in c.fetchall()])
-        
-    def db_add_user_move(self, user_id, enter):
-        #The userid passed as param already exists in the db
-        c = self.db.cursor()
-        if enter:
-            c.executemany("""INSERT INTO Presence (userid, login, logout)
-                            VALUES (%s, %s, NULL)""",
-            [
-            (user_id, timestamp())
-            ])
-        else:
-            c.execute("""UPDATE Presence SET logout = '%s' WHERE userid = %d AND logout is null""" % (timestamp(), user_id))
-        self.db.commit()
-            
-    def db_save_message(self, user_id, b64_msg):
-        c = self.db.cursor()
-        c.executemany("""INSERT INTO Message (userid, timestamp, message)
-                                VALUES (%s, %s, %s)""",
-                [
-                (user_id, timestamp(), b64_msg)
-                ])
-        self.db.commit()
-
-            
-    def check_user_logged(self, user_id):
-        c = self.db.cursor()
-        c.execute("""SELECT userid FROM Presence WHERE logout is null""")
-        return (user_id in [i[0] for i in c.fetchall()])
         
     
     def disconnect(self):
         #TODO: Broken. Fixme
         # Disconnect all push clients and close server
         for client in self.connections:
-            client.close()
+            try:
+                client.close()
+            except:
+                pass
             
         # Brutally closes fonera's socket
         self.fonera_sock.close()
@@ -184,8 +228,14 @@ class BitsService:
         
         self.srv_sock.close()
         
+        for event in self.events:
+            try:
+                event.close()
+            except:
+                pass
+        
     def fonera_disconnect(self):
-        if DEBUG: print "[Debug] Disconnecting from fonera"
+        debugMessage("Disconnecting from fonera")
         self.fonera.connected = False
         self.events.remove(self.fonera_conn)
         try:
@@ -195,12 +245,12 @@ class BitsService:
         
     def broadcast_message(self, msg):
         msg += "\n"
-        if DEBUG: print "[Debug] Sending broadcast to client"
+        debugMessage("Sending broadcast to client")
         for c in self.connections:
             try:
                 c.send(msg)
             except:
-                if DEBUG: print "[Debug] FAIL a message to a client"
+                errorMessage("Failed a message to a client", False)
                 c.close()
                 self.connections.remove(c)
                 self.events.remove(c)
@@ -225,11 +275,16 @@ class BitsService:
             return False
     
     def user_move(self, user_id, enter):
-        if self.db_check_user_existence(user_id) and (enter or self.check_user_logged(user_id)) and self.db_get_status():
-            self.db_add_user_move(user_id, enter)
-        else:
+        out = self.db.user_enter(user_id, enter)
+        if not out[0]: debugMessage("The user id '%d' does not exists in the db")
+        if out[0] and (not out[1]):
+            if enter:
+                debugMessage("The user id '%d' already logged in")
+            else:
+                debugMessage("The user id '%d' already logged out")
+
             #TODO: Avvertire la fonera?
-            if DEBUG: print "[Debug] The user id '%d' recived does not exists in the db or it is already logged out" % user_id
+
                 
     def fonera_command_handler(self):
         msg = self.fonera_conn.recv(2048).replace("\n","").replace("\r","")
@@ -239,33 +294,34 @@ class BitsService:
                 try:
                     status = bool(int(msg.split("status ")[-1]))
                     
-                    if self.db_get_status() != status:
-                        self.db_change_status(status, False) # Aggiorno il database con il nuovo status inviato dalla fonera
+                    if self.db.status(status, False): #Se ritorna True lo stato è stato cambiato in quello scelto
                         self.fonera.status = status
-                        self.broadcast_message(self.fonera.statusString()) #Invio a tutti i client push il nuovo status della sede ricevuto dalla fonera
+                        self.broadcast_message(self.fonera.statusString())
+                    else:
+                        #Siamo già nello stato in cui vuoi cambiare!
+                        debugMessage("Fonera trying to change to actual status instead of new one")
+                        #TODO: Avvisare la fonera?
                 except:
                     # Se fallisce la conversione in bool o db o broadcast
-                    if DEBUG: print "[Debug] FAIL to understand command: '"+str(msg)+"' with error "+str(exc_info()[0])
+                    debugMessage("Failed to understand command: '"+msg+"' with error '"+str(exc_info()[0])+"'")
                 
             elif msg.startswith("enter "):
                 try:
-                    # E' entrato tizio-caio con ID "user_id"
-                    user_id = int(msg.split("enter ")[-1])
+                    uid = int(msg.split("enter ")[-1])
                     # TODO: Che si fa?
-                    self.user_move(user_id, True)
-                    if DEBUG: print "E' entrato l'utente con id: "+str(user_id)
+                    self.user_move(uid, True)
+                    debugMessage("User enter: %s" % uid)
                 except:
-                    if DEBUG: print "[Debug] Wrong enter message"
+                    debugMessage("Recived invalid enter message from Fonera")
                     
             elif msg.startswith("leave "):
                 try:
-                    # Se ne va tizio-caio con ID "user_id"
-                    user_id = int(msg.split("leave ")[-1])
+                    uid = int(msg.split("leave ")[-1])
                     # TODO: Che si fa?
-                    self.user_move(user_id, False)
-                    if DEBUG: print "E' uscito l'utente con id: "+str(msg.split(" ")[1])
+                    self.user_move(uid, False)
+                    debugMessage("User leave: %s" % uid)
                 except:
-                    if DEBUG: print "[Debug] Wrong leave message"
+                    debugMessage("Recived invalid leave message from Fonera")
                 
             elif msg.startswith("temperature "):
                 element = msg.split(" ")[1:]
@@ -273,16 +329,16 @@ class BitsService:
                     try:
                         sensor = int(element[0])
                         value = float(element[1])
-                        if DEBUG: print "Rilevata temperatura "+str(value)+" C dal sensore "+str(sensor)
+                        debugMessage("Detected temperature %f °C from sensor %d" % (value, sensor))
                         # Aggiungo la temperatura nel database
-                        self.db_store_temperature(value, sensor)
+                        self.db.store_temperature(value, sensor)
                     except:
-                        if DEBUG: print "[Debug] FAIL to understand command: "+str(msg)
+                        debugMessage("Failed to understand command: %s" % msg)
                 else:
-                    if DEBUG: print "[Debug] FAIL to understand command: "+str(msg)
+                    debugMessage("Failed to understand command: %s" % msg)
                 
             else:
-                if DEBUG: print "[Debug] Command not implemented: "+str(msg)
+                debugMessage("Failed to understand command: %s" % msg)
         else:
             self.fonera_disconnect()
             
@@ -295,50 +351,50 @@ class BitsService:
                 try:
                     status = bool(int(msg.split("status ")[-1]))
                 
-                    if self.db_get_status() != status:
-                        self.db_change_status(status, True) # Aggiorno il database con il nuovo status inviato da php
+                    if self.db.status() != status:
+                        self.db.status(status, True) # Aggiorno il database con il nuovo status inviato da php
                         self.fonera.status = status
                         self.fonera_change_status(status) #Avviso la fonera del cambio di stato
                         self.broadcast_message(self.fonera.statusString())
                 except:
-                    if DEBUG: print "[Debug] Recived invalid status from php"
+                    debugMessage("Recived invalid status message from PHP")
                     self.php_disconnect_client(conn)
                     
             elif msg.startswith("enter "):
                 try:
-                    user_id = int(msg.split("enter ")[-1])
-                    #E' entrato tizio-caio
-                    self.user_move(user_id, True)
+                    uid = int(msg.split("enter ")[-1])
+                    self.db.user_enter(uid, True)
+                    #TODO: Mandare feedback a PHP se non esiste l'utente o è già loggato? In tal caso creare un'altra funzione come fatto per la fonera
                 except:
-                    if DEBUG: print "[Debug] Recived invalid enter message"
+                    debugMessage("Recived invalid enter message from PHP")
                     self.php_disconnect_client(conn)
             
             elif msg.startswith("leave "):
                 try:
-                    user_id = int(msg.split("leave ")[-1])
-                    #E' uscito tizio-caio
-                    self.user_move(user_id, False)
+                    uid = int(msg.split("leave ")[-1])
+                    self.db.user_enter(uid, False)
+                    #TODO: Vedi sopra
                 except:
-                    if DEBUG: print "[Debug] Recived invalid leave message"
+                    debugMessage("Recived invalid enter message from PHP")
                     self.php_disconnect_client(conn)
                     
             elif msg.startswith("message "):
                 try:
                     p = msg.split(" ")
-                    user_id = int(p[1])
+                    uid = int(p[1])
                     b64_msg = p[2]
-                    plainmsg=b64decode(b64_msg) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
+                    plainmsg=b64encode(b64decode(b64_msg)) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
                     b64_msg=b64encode(plainmsg) #Goodbye injection padding
                     #Mi e' arrivato il testo
                     #Salva il testo sul db
-                    if self.db_check_user_existence(user_id):
-                        self.db_save_message(user_id, b64_msg)
+                    if self.db.user_exists(uid):
+                        self.db.store_msg(uid, b64_msg)
                         #Invia il testo alla fonera
                         self.fonera_display_text_plain(b64_msg)
                     else:
-                        if DEBUG: print "[Debug] The specified user does not exist in the database"
+                        debugMessage("The specified user '%d' does not exist in the database" % uid)
                 except:
-                    if DEBUG: print "[Debug] Recived invalid text message '"+str(b64_msg)+"'"
+                    debugMessage("Recived invalid text message '%s'" % b64_msg)
                     self.php_disconnect_client(conn)
                     
             elif msg.startswith("sound "):
@@ -347,13 +403,13 @@ class BitsService:
                     #play del sound
                     self.fonera_play_sound(sound_id)
                 except:
-                    if DEBUG: print "[Debug] Recived invalid sound message"
+                    debugMessage("Recived invalid sound message")
                     self.php_disconnect_client(conn)
         else:
             self.php_disconnect_client(conn)
             
     def php_disconnect_client(self,conn):
-        if DEBUG: print "[Debug] Disconnecting a php client"
+        debugMessage("Disconnecting a php client")
         self.php_connections.remove(conn)
         self.events.remove(conn)
         try:
@@ -390,19 +446,18 @@ class BitsService:
             return False
         
     def mainloop(self):
-        self.db_init()
         self.server()
     
         while self.runnable:
             in_ready,out_ready,except_ready = select.select(self.events,[],[])
-            if DEBUG: print "[Debug] Select activated"
+            debugMessage("Select activated")
             
             for event in in_ready: 
             
                 if event == self.srv_sock: 
-                    if DEBUG: print "[Debug] Internet accept socket event"
-                    conn,addr = self.srv_sock.accept()
-                    if len(self.connections)<self.src_max_conn:
+                    debugMessage("Internet accept socket event")
+                    conn, addr = self.srv_sock.accept()
+                    if len(self.connections) < self.src_max_conn:
                         self.events.append(conn)
                         self.connections.append(conn)
                         self.send_client_msg(conn, self.fonera.statusString())
@@ -410,14 +465,14 @@ class BitsService:
                         conn.close()
                 
                 elif event == self.php_sock:
-                    if DEBUG: print "[Debug] PHP accept socket event"
+                    debugMessage("PHP accept socket event")
                     conn,addr = self.php_sock.accept()
                     self.events.append(conn)
                     self.php_connections.append(conn)
                     
                 
                 elif event == self.fonera_sock and not self.fonera.connected: 
-                    if DEBUG: print "[Debug] Fonera accept socket event"
+                    debugMessage("Fonera accept socket event")
                     self.fonera_conn, addr = self.fonera_sock.accept()
                     self.events.append(self.fonera_conn)
                     self.fonera.connected = True
@@ -427,32 +482,36 @@ class BitsService:
                     # (non vogliamo avvisare nessuno quando la fonera si collega)
                     
                 elif self.fonera.connected and event == self.fonera_conn:
-                    if DEBUG: print "[Debug] Fonera recv socket event"
+                    debugMessage("Fonera recv socket event")
                     self.fonera_command_handler()
                 
                 elif event in self.connections:
-                    if DEBUG: print "[Debug] Internet recv socket event"
+                    debugMessage("Internet recv socket event")
                     # Disconnects clients who sends something
                     event.close()
                     self.connections.remove(event)
                     self.events.remove(event)
                     
                 elif event in self.php_connections:
-                    if DEBUG: print "[Debug] PHP recv socket event"
+                    debugMessage("PHP recv socket event")
                     self.php_message_handler(event)
                 
                 else:
-                    if DEBUG: print "[Debug] unexcepted event! -> "+str(event)
+                    debugMessage("unexcepted event! -> %s" % str(event))
                     
         self.disconnect()
         
+
 if __name__ == "__main__":
     bits = BitsService()
     try:
         bits.mainloop()
     except KeyboardInterrupt:
-        print "Stopping all sockets"
+        debugMessage("\nStopping all sockets")
         bits.disconnect()
+        debugMessage("Cleaning up")
+        del bits
+        debugMessage("Good bye!")
          
 
 
