@@ -18,6 +18,10 @@ class PushService:
             s = service(start_status = self.status)
             s.start()
             self.push_istances.append(s)
+            
+    def starting(self):
+        for service in self.push_istances:
+            service.stop()
     
     def change_status(self, status):
         self.status = status

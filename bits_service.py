@@ -89,6 +89,8 @@ class BitsService:
                 event.close()
             except:
                 pass
+        #killing push services
+        self.push_srv.stopping()
         
     def fonera_disconnect(self):
         debugMessage("Disconnecting from fonera")
