@@ -96,9 +96,16 @@ class StandardPush(threading.Thread):
     
     def client_handler(self, conn):
         #disconnects clients who sends something
-        event.close()
-        self.connections.remove(event)
-        self.events.remove(event)
+        conn.close()
+        self.connections.remove(conn)
+        self.events.remove(conn)
+    
+    def server_full(self, conn):
+        try:
+            conn.close()
+        except:
+            pass
+        
         
     def disconnect_all(self):
         self.running = False
@@ -133,8 +140,8 @@ class StandardPush(threading.Thread):
                             self.connections.append(conn)
                             self.send_client_msg(conn, self.statusString())
                         else:
-                            conn.close()
                             debugMessage("New connection recived but queue full")
+                            self.server_full(conn)
                             
                     elif event in self.connections:
                         debugMessage("Internet recv socket event")
@@ -144,7 +151,7 @@ class StandardPush(threading.Thread):
         
         
 class Websockets(threading.Thread):
-    def __init__(self, bind_address, port, maxlisten = 5, maxconn = 300,
+    def __init__(self, bind_address, port=1723, maxlisten = 5, maxconn = 300,
                  useThreads = False):
         threading.Thread.__init__(self)
         self.srv_address = bind_address
@@ -152,6 +159,16 @@ class Websockets(threading.Thread):
         self.srv_maxlisten = maxlisten
         self.srv_maxconn = maxconn
         self.useThreads = useThreads
+        
+        
+        handshake = """\
+HTTP/1.1 101 Web Socket Protocol Handshake\r\n\
+Upgrade: WebSocket\r\n\
+Connection: Upgrade\r\n\
+WebSocket-Origin: http://localhost:8888\r\n\
+WebSocket-Location: ws://localhost:9999/\r\n\r\n\
+"""
+        
         
         self.srv_socket = None
         self.events = []
