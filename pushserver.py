@@ -6,6 +6,29 @@ import select
 import threading
 from common import *
 
+class PushService:
+    def __init__(self, start_status):
+        self.push_services = (StandardPush)
+        
+        self.status = start_status
+        self.push_istances = []
+        
+    def starting(self):
+        for service in self.push_services:
+            s = service(start_status = self.status)
+            s.start()
+            self.push_istances.append(s)
+    
+    def change_status(self, status):
+        self.status = status
+        for service in self.push_istances:
+            service.change_status(status)
+    
+    def send_message(self, msg):
+        for service in self.push_istances:
+            service.send_message(msg)
+    
+
 class StandardPush(threading.Thread):
     def __init__(self, bind_address, port, maxlisten = 5, maxconn = 300,
                  useThreads = False, start_status=None):
@@ -119,7 +142,7 @@ class StandardPush(threading.Thread):
 class Websockets(threading.Thread):
     def __init__(self, bind_address, port, maxlisten = 5, maxconn = 300,
                  useThreads = False):
-                 
+        threading.Thread.__init__(self)
         self.srv_address = bind_address
         self.srv_port = port
         self.srv_maxlisten = maxlisten

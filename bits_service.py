@@ -62,14 +62,8 @@ class BitsService:
         self.db = database.Database("bits", "<db-password-here>", "bitsdb", "localhost")
         self.fonera.status = self.db.status()
         
-        self.standard_push = pushserver.StandardPush(bind_address="", port = 3389,
-                 maxlisten = 5, maxconn = 300, useThreads = False,
-                 start_status = self.fonera.status)
-        self.standard_push.start()
-        
-        #self.websocket_push = pushserver.Websocket()
-        #self.websocket_push.start()
-
+        self.push_srv = PushService(self.fonera.status)
+        self.push_srv.starting()
     
     def server(self):
         
@@ -106,8 +100,7 @@ class BitsService:
             pass
         
     def push_clients_alert(self, status):
-        self.standard_push.change_status(status)
-        #self.websocket_push.change_status(status)
+        self.push_srv.change_status(status)
                 
     def send_fonera_msg(self, msg):
         try:
