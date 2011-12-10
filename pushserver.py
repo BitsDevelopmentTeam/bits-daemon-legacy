@@ -105,6 +105,9 @@ class StandardPush(threading.Thread):
             conn.close()
         except:
             pass
+            
+    def stop(self):
+        self.disconnect_all()
         
         
     def disconnect_all(self):

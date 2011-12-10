@@ -109,7 +109,7 @@ class Database:
         self.query(
             """INSERT INTO Message (userid, timestamp, message)
                             VALUES (%s, %s, %s)""",
-            [
+            params=[
             (uid, timestamp(), b64_msg)
-            ])
+            ], many=True)
 

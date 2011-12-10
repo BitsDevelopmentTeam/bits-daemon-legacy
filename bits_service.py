@@ -218,10 +218,11 @@ class BitsService:
                     
             elif msg.startswith("message "):
                 try:
+                    b64_msg = None #Fa funzionare il print dell'except anche se fallisce prima di assegnare
                     p = msg.split(" ")
                     uid = int(p[1])
                     b64_msg = p[2]
-                    plainmsg=b64encode(b64decode(b64_msg)) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
+                    plainmsg=b64decode(b64_msg) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
                     b64_msg=b64encode(plainmsg) #Goodbye injection padding
                     #Mi e' arrivato il testo
                     #Salva il testo sul db
