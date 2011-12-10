@@ -8,7 +8,7 @@ from common import *
 
 class PushService:
     def __init__(self, start_status):
-        self.push_services = (StandardPush)
+        self.push_services = [StandardPush]
         
         self.status = start_status
         self.push_istances = []
@@ -19,7 +19,7 @@ class PushService:
             s.start()
             self.push_istances.append(s)
             
-    def starting(self):
+    def stopping(self):
         for service in self.push_istances:
             service.stop()
     
@@ -34,7 +34,7 @@ class PushService:
     
 
 class StandardPush(threading.Thread):
-    def __init__(self, bind_address, port, maxlisten = 5, maxconn = 300,
+    def __init__(self, bind_address="", port=3389, maxlisten = 5, maxconn = 300,
                  useThreads = False, start_status=None):
         threading.Thread.__init__(self)
         self.srv_address = bind_address

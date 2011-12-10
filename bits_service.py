@@ -62,7 +62,7 @@ class BitsService:
         self.db = database.Database("bits", "<db-password-here>", "bitsdb", "localhost")
         self.fonera.status = self.db.status()
         
-        self.push_srv = PushService(self.fonera.status)
+        self.push_srv = pushserver.PushService(self.fonera.status)
         self.push_srv.starting()
     
     def server(self):
