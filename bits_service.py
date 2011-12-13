@@ -17,6 +17,7 @@ from base64 import b64encode,b64decode
 import pushserver
 import database
 from common import *
+from config import MainConfiguration
 
 
 class FoneraStatus:
@@ -35,21 +36,21 @@ class FoneraStatus:
 class BitsService:
 
     def __init__(self):
-        #config = ConfigParser.RawConfigParser()
-        #config.read('bits_service.conf')
-        #print config.get('push-server', 'port')
+        conf = MainConfiguration()
+        #var_list = dir(conf)    
         
-        
+        phpconf = conf.Php()
         self.php_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.php_port = 56343
-        self.php_bind_address = "127.0.0.1"
-        self.php_max_wait_sock = 5
+        self.php_port = phpconf.port
+        self.php_bind_address = phpconf.bind_address
+        self.php_max_wait_sock = phpconf.max_wait_sock
         
-        
+        foneraconf = conf.Fonera()
         self.fonera_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.fonera_port = 56345
-        self.fonera_bind_address = "10.0.0.1"
-        self.fonera_max_wait_sock = 1
+        self.fonera_port = foneraconf.port
+        self.fonera_bind_address = foneraconf.bind_address
+        self.fonera_max_wait_sock = foneraconf.max_wait_sock
+        
         self.fonera_conn = None
         
         self.runnable = True
@@ -59,25 +60,26 @@ class BitsService:
         self.php_connections = []
         self.events = []
         
-        self.db = database.Database("bits", "<db-password-here>", "bitsdb", "localhost")
+        self.db = database.Database(conf.db_user, conf.db_pass, conf.db_name, conf.db_host)
         self.fonera.status = self.db.status()
         
         self.push_srv = pushserver.PushService(self.fonera.status)
         self.push_srv.starting()
     
     def server(self):
+        debugMessage("Starting PHP socket server")
         
         self.php_sock.bind((self.php_bind_address, self.php_port))
         self.php_sock.listen(self.php_max_wait_sock)
         self.php_sock.setblocking(0)
         self.events.append(self.php_sock)
         
+        debugMessage("Starting Fonera socket")
         self.fonera_sock.bind((self.fonera_bind_address, self.fonera_port))
         self.fonera_sock.listen(self.fonera_max_wait_sock)
         self.fonera_sock.setblocking(0)
         self.events.append(self.fonera_sock)
-    
-        
+            
     
     def disconnect(self):   
         # Brutally closes fonera's socket

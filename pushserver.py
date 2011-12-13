@@ -5,6 +5,9 @@ import socket
 import select
 import threading
 from common import *
+from config import PushConfiguration
+
+pushconf = PushConfiguration()
 
 class PushService:
     def __init__(self, start_status):
@@ -34,14 +37,17 @@ class PushService:
     
 
 class StandardPush(threading.Thread):
-    def __init__(self, bind_address="", port=3389, maxlisten = 5, maxconn = 300,
-                 useThreads = False, start_status=None):
+    def __init__(self, start_status=None):
+    
         threading.Thread.__init__(self)
-        self.srv_address = bind_address
-        self.srv_port = port
-        self.srv_maxlisten = maxlisten
-        self.srv_max_conn = maxconn
-        self.useThreads = useThreads
+        
+        stdconf = pushconf.Standard()
+        
+        self.srv_address =  stdconf.bind_address
+        self.srv_port = stdconf.port
+        self.srv_maxlisten = stdconf.maxlisten
+        self.srv_max_conn = stdconf.maxconn
+        self.useThreads = stdconf.useThreads
         self.status = start_status
         
         self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP socket

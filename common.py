@@ -17,3 +17,7 @@ def errorMessage(msg, fatal=True):
     print("[Error] %s" % msg)
     if fatal:
         raise SystemExit
+        
+def missingConfig(variableName):
+    print("[Error] Missing variable %s" % variableName)
+    raise SystemExit

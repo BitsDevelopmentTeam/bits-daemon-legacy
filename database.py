@@ -3,13 +3,16 @@
 
 import MySQLdb
 from common import *
+from config import DatabaseConfiguration
 
 class Database:
     def __init__(self, user, password, database, host):
-        self.user = user
-        self.passwd = password
-        self.db_name = database
-        self.host = host
+        self.config = DatabaseConfiguration()
+        
+        self.user = self.config.user
+        self.passwd = self.config.passwd
+        self.db_name = self.config.dbname
+        self.host = self.config.host
         self.connection = None
         
         self.connect()
@@ -18,6 +21,7 @@ class Database:
         try:
             self.connection = MySQLdb.connect(host = self.host, user = self.user,
                                           passwd = self.passwd, db = self.db_name)
+            debugMessage("(Re)connected to MySQL database")
         except:
             errorMessage("Connection to MySQL database fail")
         
@@ -40,6 +44,7 @@ class Database:
     
     def status(self, s = None, fromWebsite = False): 
         if s == None:
+            debugMessage("Getting current status from database")
             cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
             if cursor.fetchall() == ((1,),): #in questo modo Se il database e' vuoto ritorna False
                 return True
@@ -63,12 +68,14 @@ class Database:
                 return False
 
     def force_logout_all(self): 
+        debugMessage("Forcing logout for all logged-in users")
         self.query("""UPDATE Presence SET logout = '%s' WHERE logout is null""" % timestamp())
 
     def user_enter(self, uid, enter = True): 
         if self.user_exists(uid):
             if enter:
                 if not self.user_logged_in(uid):
+                    debugMessage("User %s logging in" % uid)
                     self.query("""INSERT INTO Presence (userid, login, logout)
                                         VALUES (%s, %s, NULL)""", args=[
                                 (uid, timestamp())
@@ -78,6 +85,7 @@ class Database:
                     return (True,False)
             else:
                 if self.user_logged_in(uid):
+                    debugMessage("User %s logging out" % uid)
                     self.query(
                         """UPDATE Presence SET logout = '%s' WHERE userid = %d AND logout is null"""
                         % (timestamp(), uid))
