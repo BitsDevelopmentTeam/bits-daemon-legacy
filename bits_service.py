@@ -10,7 +10,6 @@
 
 import socket
 import select
-import ConfigParser
 from sys import exc_info
 from base64 import b64encode,b64decode
 

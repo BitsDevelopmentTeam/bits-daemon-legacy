@@ -27,4 +27,7 @@ class PushConfiguration:
         maxlisten = 5
         maxconn = 300
         useThreads = False
+        
+    class Websockets:
+        pass
 
