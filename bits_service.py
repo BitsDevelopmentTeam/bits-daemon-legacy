@@ -59,7 +59,7 @@ class BitsService:
         self.php_connections = []
         self.events = []
         
-        self.db = database.Database(conf.db_user, conf.db_pass, conf.db_name, conf.db_host)
+        self.db = database.Database()
         self.fonera.status = self.db.status()
         
         self.push_srv = pushserver.PushService(self.fonera.status)

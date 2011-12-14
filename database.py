@@ -6,7 +6,7 @@ from common import *
 from config import DatabaseConfiguration
 
 class Database:
-    def __init__(self, user, password, database, host):
+    def __init__(self):
         self.config = DatabaseConfiguration()
         
         self.user = self.config.user
