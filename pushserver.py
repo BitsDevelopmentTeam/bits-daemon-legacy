@@ -25,6 +25,7 @@ class PushService:
     def stopping(self):
         for service in self.push_istances:
             service.stop()
+            service._Thread__stop()
     
     def change_status(self, status):
         self.status = status
@@ -146,11 +147,12 @@ class StandardPush(threading.Thread):
                         debugMessage("Internet accept socket event")
                         conn, addr = self.srv_sock.accept()
                         if len(self.connections) < self.srv_max_conn:
+                            debugMessage("Connected with push client %s" % addr[0])
                             self.events.append(conn)
                             self.connections.append(conn)
                             self.send_client_msg(conn, self.statusString())
                         else:
-                            debugMessage("New connection recived but queue full")
+                            debugMessage("New connection from %s recived but queue full" % addr[0])
                             self.server_full(conn)
                             
                     elif event in self.connections:

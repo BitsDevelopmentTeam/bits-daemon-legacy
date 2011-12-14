@@ -129,7 +129,11 @@ class BitsService:
 
                 
     def fonera_command_handler(self):
-        msg = self.fonera_conn.recv(2048).replace("\n","").replace("\r","")
+        try:
+            msg = self.fonera_conn.recv(2048).replace("\n","").replace("\r","")
+        except:
+            msg = None
+            
         if msg:
             if msg.startswith("status "):
                 # La fonera mi avvisa del cambio di stato della sede
@@ -185,7 +189,11 @@ class BitsService:
             self.fonera_disconnect()
             
     def php_message_handler(self, conn):
-        msg = conn.recv(2048).replace("\n","").replace("\r","")
+        try:
+            msg = conn.recv(2048).replace("\n","").replace("\r","")
+        except:
+            msg = None
+
         if msg:
             # Messaggi da visualizzare a display inviati da php,
             # Avvisi che sta arrivando qualcuno mandati da php
@@ -312,9 +320,13 @@ class BitsService:
                         self.fonera.connected = True
                         self.fonera_change_status(self.fonera.status) # Se qualcuno cambia il db durante l'esecuzione del programma, non viene avvisata la fonera
                     else:
-                        debugMessage("Attempt to another fonera connection, disconnecting attempt")
-                        conn, addr = self.fonera_sock.accept() # Addio connessione aggiuntiva!
-                        conn.close()
+                        debugMessage("Attempt to another fonera connection, disconnecting first connection")
+                        conn, addr = self.fonera_sock.accept() 
+                        self.events.remove(self.fonera_conn)
+                        self.fonera_conn.close()
+                        self.fonera_conn = conn
+                        self.events.append(self.fonera_conn)
+                        self.fonera_change_status(self.fonera.status)
 
                     #self.broadcast_message(self.fonera.statusString())
                     # (non vogliamo avvisare nessuno quando la fonera si collega)
