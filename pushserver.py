@@ -117,6 +117,7 @@ class StandardPush(threading.Thread):
         
         
     def disconnect_all(self):
+        debugMessage("Stopping StandardPush service")
         self.running = False
         for conn in self.connections:
             try:
@@ -156,7 +157,7 @@ class StandardPush(threading.Thread):
                         debugMessage("Internet recv socket event")
                         self.client_handler(event)
                 
-            
+        debugMessage("StandardPush main cicle stopped")
         
         
 class Websockets(threading.Thread):

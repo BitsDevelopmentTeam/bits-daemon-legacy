@@ -304,7 +304,7 @@ class BitsService:
                     self.php_connections.append(conn)
                     
                 
-                elif event == self.fonera_sock and not self.fonera.connected: 
+                elif event == self.fonera_sock: 
                     if not self.fonera.connected:
                         debugMessage("Fonera accept socket event")
                         self.fonera_conn, addr = self.fonera_sock.accept()
@@ -312,7 +312,9 @@ class BitsService:
                         self.fonera.connected = True
                         self.fonera_change_status(self.fonera.status) # Se qualcuno cambia il db durante l'esecuzione del programma, non viene avvisata la fonera
                     else:
-                        self.fonera_sock.accept()[0].close() # Addio connessione aggiuntiva!
+                        debugMessage("Attempt to another fonera connection, disconnecting attempt")
+                        conn, addr = self.fonera_sock.accept() # Addio connessione aggiuntiva!
+                        conn.close()
 
                     #self.broadcast_message(self.fonera.statusString())
                     # (non vogliamo avvisare nessuno quando la fonera si collega)
@@ -328,6 +330,13 @@ class BitsService:
                 
                 else:
                     debugMessage("unexcepted event! -> %s" % str(event))
+                    try:
+                        self.events.remove(event)
+                        del event
+                        debugMessage("Unexcepted event: deleted forced")
+                    except:
+                        pass
+                        
                     
         self.disconnect()
         
