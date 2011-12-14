@@ -82,7 +82,10 @@ class BitsService:
     
     def disconnect(self):   
         # Brutally closes fonera's socket
+        if self.fonera.connected: self.fonera_conn.close()
         self.fonera_sock.close()
+        for conn in self.php_connections:
+            conn.close()
         # Brutally closes php socket
         self.php_sock.close()
         for event in self.events:
@@ -302,11 +305,14 @@ class BitsService:
                     
                 
                 elif event == self.fonera_sock and not self.fonera.connected: 
-                    debugMessage("Fonera accept socket event")
-                    self.fonera_conn, addr = self.fonera_sock.accept()
-                    self.events.append(self.fonera_conn)
-                    self.fonera.connected = True
-                    self.fonera_change_status(self.fonera.status) # Se qualcuno cambia il db durante l'esecuzione del programma, non viene avvisata la fonera
+                    if not self.fonera.connected:
+                        debugMessage("Fonera accept socket event")
+                        self.fonera_conn, addr = self.fonera_sock.accept()
+                        self.events.append(self.fonera_conn)
+                        self.fonera.connected = True
+                        self.fonera_change_status(self.fonera.status) # Se qualcuno cambia il db durante l'esecuzione del programma, non viene avvisata la fonera
+                    else:
+                        self.fonera_sock.accept()[0].close() # Addio connessione aggiuntiva!
 
                     #self.broadcast_message(self.fonera.statusString())
                     # (non vogliamo avvisare nessuno quando la fonera si collega)
