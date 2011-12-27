@@ -29,5 +29,13 @@ class PushConfiguration:
         useThreads = False
         
     class Websockets:
-        pass
+        bind_address = ""
+        port = 8081
+        maxlisten = 5
+        maxconn = 300
+        useThreads = False
+    
+    class Websockets_beta4:
+        port = 8080
+
 

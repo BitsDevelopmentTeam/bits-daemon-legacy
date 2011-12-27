@@ -4,6 +4,7 @@
 import socket
 import select
 import threading
+import ws
 from common import *
 from config import PushConfiguration
 
@@ -52,6 +53,7 @@ class StandardPush(threading.Thread):
         self.status = start_status
         
         self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP socket
+        self.srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1) #Keepalive TCP
         self.events = []
         self.connections = []
         
@@ -161,19 +163,54 @@ class StandardPush(threading.Thread):
                 
         debugMessage("StandardPush main cicle stopped")
         
-        
-class Websockets(threading.Thread):
-    def __init__(self, bind_address, port=1723, maxlisten = 5, maxconn = 300,
-                 useThreads = False):
+
+class Websockets_beta4(threading.Thread):
+    def __init__(self, start_status=None):
         threading.Thread.__init__(self)
-        self.srv_address = bind_address
-        self.srv_port = port
-        self.srv_maxlisten = maxlisten
-        self.srv_maxconn = maxconn
-        self.useThreads = useThreads
         
+        stdconf = pushconf.Websockets_beta4()
         
-        handshake = """\
+        self.srv_port = stdconf.port
+        
+        self.sock = ws.PushServer(self.srv_port)
+        self.sock.welcomeMessage(self.bool_to_text(start_status))
+    
+    def bool_to_text(self, status):
+        if status:
+            return "open"
+        else:
+            return "close"
+        
+    def change_status(self, status):
+        self.sock.send(self.bool_to_text(status))
+    
+    def send_message(self, msg):
+        self.sock.send(msg)
+    
+    def stop(self):
+        del self.sock
+        
+class Websockets(threading.Thread): #BROKEN!
+    def __init__(self, start_status=None):
+        threading.Thread.__init__(self)
+        
+        stdconf = pushconf.Websockets()
+        
+        self.srv_address =  stdconf.bind_address
+        self.srv_port = stdconf.port
+        self.srv_maxlisten = stdconf.maxlisten
+        self.srv_max_conn = stdconf.maxconn
+        self.useThreads = stdconf.useThreads
+        self.status = start_status
+        
+        self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP socket
+        self.srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1) #Keepalive TCP
+        self.events = []
+        self.connections = {} # ex: {connection1:[buffer,handshake]}
+        
+        self.running = True
+        
+        self.handshake = """\
 HTTP/1.1 101 Web Socket Protocol Handshake\r\n\
 Upgrade: WebSocket\r\n\
 Connection: Upgrade\r\n\
@@ -196,6 +233,29 @@ WebSocket-Location: ws://localhost:9999/\r\n\r\n\
         if not self.useThreads:
             self.srv_sock.setblocking(0) 
             self.events.append(self.srv_sock)
+            
+            
+    def client_handler(self, conn): #Se arrivo qua significa che ho sempre dati da leggere.
+        data = conn.recv(1024)
+        self.connections[conn][0] += data
+        
+        if data:
+            if "\r\n\r\n" in self.connections[conn][0]:
+                #mi e' arrivato un header
+                if self.connections[conn][1]: 
+                    #se ho gia' fatto l'handshake
+                    pass
+                else:
+                    conn.send(self.handshake)
+        else:
+            #Connection closed
+            self.connection_del()
+    
+    def connection_del(self, conn):
+        if conn in self.handshaked: self.handshaked.remove(conn)
+        self.connections.pop(conn)
+        self.events.remove(conn)
+        conn.close()
     
     def run(self):
         self.init_service()
@@ -207,5 +267,18 @@ WebSocket-Location: ws://localhost:9999/\r\n\r\n\
                 in_ready, out_ready, except_ready = select.select(self.events,[],[])
                 
                 for event in in_ready: 
-                    pass
+                    if event == self.srv_sock: 
+                        debugMessage("Websocket accept socket event")
+                        conn, addr = self.srv_sock.accept()
+                        if len(self.connections) < self.srv_max_conn:
+                            debugMessage("Connected with websocket client %s" % addr[0])
+                            self.events.append(conn)
+                            self.connections[conn] = ["", False]
+                        else:
+                            debugMessage("New connection from %s recived but websocket queue full" % addr[0])
+                            self.server_full(conn)
+                            
+                    elif event in self.connections:
+                        debugMessage("Internet recv socket event")
+                        self.client_handler(event)
 
