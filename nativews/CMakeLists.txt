@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 2.6)
 project(PushServer)
 
 set(CMAKE_BUILD_TYPE Release)
+# This adds -DDEBUG_MODE to redirect serial port to console
+add_definitions(-DDEBUG_MODE)
 
 find_package(SWIG REQUIRED)
 include(${SWIG_USE_FILE})

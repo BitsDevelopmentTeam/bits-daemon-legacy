@@ -102,24 +102,26 @@ class SHA1
 #include <string>
 #include <cstdio>
 
+const int sha1size=20;
+
 inline std::string sha1(const std::string& message)
 {
 	SHA1 hash;
 	hash.Input(message.c_str(),message.length());
-	unsigned int r[5];
+	unsigned int r[sha1size/4];
 	hash.Result(r);
-	char resultstr[41];
+	char resultstr[2*sha1size+1];
 	std::sprintf(resultstr,"%04x%04x%04x%04x%04x",r[0],r[1],r[2],r[3],r[4]);
 	return std::string(resultstr);
 }
 
-inline void sha1binary(const std::string& message, unsigned char digest[20])
+inline void sha1binary(const std::string& message, unsigned char digest[sha1size])
 {
 	SHA1 hash;
 	hash.Input(message.c_str(),message.length());
-	unsigned int r[5];
+	unsigned int r[sha1size/4];
 	hash.Result(r);
-	for(int i=0;i<20;i++) digest[i]=(r[i/4] >> 8*(3-i%4)) & 0xff;
+	for(int i=0;i<sha1size;i++) digest[i]=(r[i/4] >> 8*(3-i%4)) & 0xff;
 }
 // Added by TFT -- end
 

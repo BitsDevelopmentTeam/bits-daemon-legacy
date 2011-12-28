@@ -72,14 +72,22 @@ private:
 	class Client
 	{
 	public:
+		/// Maximum size to prevent DOS attacks, passed to asio::streambuf
+		/// Works in different ways depending on whether the socket is at the
+		/// HTTP header stage, or WebSocket stage:
+		/// - HTTP headers are received with async_read_until("\r\n\r\n")
+		///   so if the HTTP header exceeds this size onClientData() is
+		///   called with an error code and this causes the socket to be closed
+		/// - WebSocket data is read with async_read_some(maxSize) so data is
+		///   simply split in chunks of maxSize maximum and no error occurs
+		static const int maxSize=1024;
+
 		Client(boost::shared_ptr<boost::asio::ip::tcp::socket> sock)
-				: sock(sock), readData(new boost::asio::streambuf),
+				: sock(sock), readData(new boost::asio::streambuf(maxSize)),
 				  connectionUpgraded(false) {}
 
 		boost::shared_ptr<boost::asio::ip::tcp::socket> sock;
 		boost::shared_ptr<boost::asio::streambuf> readData;
-		static const int bufferSize=128;
-		char buffer[bufferSize];
 		bool connectionUpgraded;
 	};
 
@@ -117,7 +125,7 @@ private:
 	/**
 	 * A client sending data causes this to be called in the background thread
 	 */
-	void onClientData(const boost::system::error_code& ec,
+	void onClientData(const boost::system::error_code& ec, int bytesReceived,
 			std::list<Client>::iterator it);
 
 	/**

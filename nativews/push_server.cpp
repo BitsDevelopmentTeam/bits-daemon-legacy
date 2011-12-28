@@ -25,7 +25,6 @@
  *   along with this program; if not, see <http://www.gnu.org/licenses/>   *
  ***************************************************************************/
 
-#include <cstdio>
 #include <sstream>
 #include <boost/regex.hpp>
 #include "base64.h"
@@ -129,9 +128,10 @@ void PushServer::onConnect(const boost::system::error_code& ec,
 	{
 		clients.push_front(Client(sock));
 		list<Client>::iterator it=clients.begin();
-		async_read_until(*it->sock,*(it->readData),"\r\n\r\n",
+		async_read_until(*it->sock,*it->readData,"\r\n\r\n",
 				bind(&PushServer::onClientData,this,
-				asio::placeholders::error,it));
+				asio::placeholders::error,
+				asio::placeholders::bytes_transferred,it));
 	}
 
 	//Get ready to accept the next one
@@ -141,31 +141,42 @@ void PushServer::onConnect(const boost::system::error_code& ec,
 }
 
 void PushServer::onClientData(const boost::system::error_code& ec,
-		list<Client>::iterator it)
+		int bytesReceived, list<Client>::iterator it)
 {
-	if(ec || it->connectionUpgraded)
+	if(ec)
 	{
-		clients.erase(it); //Errors while reading,unexpected data? close socket
+		clients.erase(it); //Errors while reading? close the socket
+		return;
+	}
+
+	if(it->connectionUpgraded)
+	{
+		//See example in documentation of boost::asio::streambuf
+		it->readData->commit(bytesReceived);
+
+		clients.erase(it); //Unexpected data? close the socket
 		return;
 	}
 
 	istream is(it->readData.get());
-	bool h1=false;
+	bool h1=false; //H1: header containing "Upgrade: websocket"
 	static const regex h1r("Upgrade\\: websocket\r?");
-	bool h2=false;
+	bool h2=false; //H2: header containing "Connection: Upgrade"
 	static const regex h2r("Connection\\:.*Upgrade.*");
+	bool h3=false; //H3: empty line marking the "\r\n\r\n" (end of HTTP req.)
 	static const regex challengeMatch("Sec-WebSocket-Key\\: .*");
 	static const regex challengeReplace("(Sec-WebSocket-Key\\: )|(\r$)");
 	string challenge;
 	string line;
 	while(getline(is,line))
 	{
-		if(regex_match(line,h1r)) h1=true;
-		if(regex_match(line,h2r)) h2=true;
+		if(regex_match(line,h1r))      { h1=true; continue; }
+		if(regex_match(line,h2r))      { h2=true; continue; }
+		if(line.empty() || line=="\r") { h3=true; continue; }
 		if(regex_match(line,challengeMatch))
 			challenge=regex_replace(line,challengeReplace,"",format_all);
 	}
-	if(h1==false || h2==false || challenge.empty())
+	if(h1==false || h2==false || h3==false || challenge.empty())
 	{
 		static const string error404=
 			"HTTP/1.1 404 Not Found\r\n"
@@ -188,18 +199,19 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 		"Connection: Upgrade\r\n"
 		"Sec-WebSocket-Accept: "
 	;
-	unsigned char hash[20];
+	unsigned char hash[sha1size];
 	sha1binary(challenge+magic,hash);
 	shared_ptr<string> data(
-		new string(header+base64_encode(hash,20)+"\r\n\r\n"+welcome));
+		new string(header+base64_encode(hash,sha1size)+"\r\n\r\n"+welcome));
 	async_write(*it->sock,asio::buffer(*data),
 				bind(&PushServer::onWriteCompleted,this,
 				asio::placeholders::error,data,it));
 
 	it->connectionUpgraded=true;
-	it->sock->async_read_some(asio::buffer(it->buffer,it->bufferSize),
+	it->sock->async_read_some(it->readData->prepare(Client::maxSize),
 				bind(&PushServer::onClientData,this,
-				asio::placeholders::error,it));
+				asio::placeholders::error,
+				asio::placeholders::bytes_transferred,it));
 }
 
 void PushServer::onWriteCompleted(const system::error_code& ec,
