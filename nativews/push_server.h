@@ -42,8 +42,10 @@ class PushServer
 public:
 	/**
 	 * \param port Start the push server on a given port
+	 * \param maxClients Maximum number of accepted clients
+	 * (the default value is safe and does not require to tweak ulimit)
 	 */  
-	PushServer(int port);
+	PushServer(int port, int maxClients=500);
 
 	/**
 	 * \param message message to send to connected clients
@@ -141,6 +143,7 @@ private:
 	std::list<Client> clients;
 	boost::thread serverThread;
 	std::string welcome;
+	const int maxClients;
 };
 
 #endif //PUSH_SERVER

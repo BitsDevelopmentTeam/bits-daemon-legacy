@@ -44,9 +44,10 @@ class ShutdownException {};
 // class PushServer
 //
 
-PushServer::PushServer(int port)
+PushServer::PushServer(int port, int maxClients)
 		: ep(asio::ip::tcp::v4(),port), server(io,ep),
-		  serverThread(bind(&PushServer::serverMainLoop,this)) {}
+		  serverThread(bind(&PushServer::serverMainLoop,this)),
+		  maxClients(maxClients) {}
 
 void PushServer::send(const string& message)
 {
@@ -124,7 +125,13 @@ void PushServer::onClose()
 void PushServer::onConnect(const boost::system::error_code& ec,
 		boost::shared_ptr<boost::asio::ip::tcp::socket> sock)
 {
-	if(!ec)
+	// Note: tests done on linux show that if the number of active
+	// socket file descriptors exceeds the result of "ulimit -n"
+	// the number of sockets beyond that hang, and the server suddenly
+	// goes to 100% CPU utilization. This condition is recovered as
+	// clients are killed. Anyway, to prevent the DOS potential of
+	// a 100% CPU consumption, sockets beyond maxClients are dropped.
+	if(!ec && clients.size()<=maxClients)
 	{
 		clients.push_front(Client(sock));
 		list<Client>::iterator it=clients.begin();

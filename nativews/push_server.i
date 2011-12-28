@@ -11,7 +11,7 @@
 class PushServer
 {
 public:
-	PushServer(int port);
+	PushServer(int port, int maxClients=500);
 	void send(const std::string& message);
 	void welcomeMessage(const std::string& message);
 	~PushServer();
