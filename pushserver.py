@@ -12,7 +12,7 @@ pushconf = PushConfiguration()
 
 class PushService:
     def __init__(self, start_status):
-        self.push_services = [StandardPush]
+        self.push_services = [StandardPush, Websockets_beta4]
         
         self.status = start_status
         self.push_istances = []
@@ -182,6 +182,7 @@ class Websockets_beta4(threading.Thread):
             return "close"
         
     def change_status(self, status):
+        self.sock.welcomeMessage(self.bool_to_text(start_status))
         self.sock.send(self.bool_to_text(status))
     
     def send_message(self, msg):
