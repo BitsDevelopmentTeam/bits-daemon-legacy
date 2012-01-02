@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2011 by Terraneo Federico                               *
+ *   Copyright (C) 2011, 2012 by Terraneo Federico                         *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -74,7 +74,7 @@ private:
 	class Client
 	{
 	public:
-		/// Maximum size to prevent DOS attacks, passed to asio::streambuf
+		/// Maximum size to prevent DoS attacks, passed to asio::streambuf
 		/// Works in different ways depending on whether the socket is at the
 		/// HTTP header stage, or WebSocket stage:
 		/// - HTTP headers are received with async_read_until("\r\n\r\n")
@@ -86,17 +86,27 @@ private:
 
 		Client(boost::shared_ptr<boost::asio::ip::tcp::socket> sock)
 				: sock(sock), readData(new boost::asio::streambuf(maxSize)),
-				  connectionUpgraded(false) {}
+				  connectionUpgraded(false), lastPacket(false) {}
 
 		boost::shared_ptr<boost::asio::ip::tcp::socket> sock;
 		boost::shared_ptr<boost::asio::streambuf> readData;
 		bool connectionUpgraded;
+		bool lastPacket;
 	};
 
 	/**
-	 * Transform a string into a WebSocket text frame
+	 * \param data input text string
+	 * \return data, encoded in a WebSocket text frame
 	 */
 	static std::string packAsTextFrame(const std::string& data);
+
+	/**
+	 * Send data to a client and close the connection
+	 * \param it packet is sent to this client
+	 * \param data data to send
+	 */
+	void lastPacket(std::list<Client>::iterator it,
+			boost::shared_ptr<std::string> data);
 
 	/**
 	 * The only background thread spawned has this function as main loop
@@ -105,13 +115,17 @@ private:
 
 	/**
 	 * Calling send() causes this to be called in the background thread
+	 * \param data data to send to clients
 	 */
 	void onSend(boost::shared_ptr<std::string> data);
 
 	/**
 	 * Calling welcomeMessage() causes this to be called in the background thread
+	 * \param dataWs data encoded in a WebSocket text frame
+	 * \param dataHttp data encoded in an HTTP reply
 	 */
-	void onWelcomeMessage(boost::shared_ptr<std::string> data);
+	void onWelcomeMessage(boost::shared_ptr<std::string> dataWs,
+			boost::shared_ptr<std::string> dataHttp);
 
 	/**
 	 * Destroying the object causes this to be called in the background thread
@@ -120,18 +134,28 @@ private:
 
 	/**
 	 * A new client connecting causes this to be called in the background thread
+	 * \param ec if errors occurred
+	 * \param sock socket with the client
 	 */
 	void onConnect(const boost::system::error_code& ec,
 			boost::shared_ptr<boost::asio::ip::tcp::socket> sock);
 
 	/**
 	 * A client sending data causes this to be called in the background thread
+	 * \param ec if errors occurred
+	 * \param bytesReceived number of bytes received
+	 * \param it client id
 	 */
 	void onClientData(const boost::system::error_code& ec, int bytesReceived,
 			std::list<Client>::iterator it);
 
 	/**
 	 * A completed write causes this to be called in the background thread
+	 * \param ec if errors occurred
+	 * \param data data being sent. It is a trick for the reference counting
+	 * mechanism: since a reference exists till this function is called, the
+	 * buffer is not deallocated until the packet is sent (desired behaviour)
+	 * \param it client id
 	 */
 	void onWriteCompleted(const boost::system::error_code& ec,
 			boost::shared_ptr<std::string> data,
@@ -142,7 +166,8 @@ private:
 	boost::asio::ip::tcp::acceptor server;
 	std::list<Client> clients;
 	boost::thread serverThread;
-	std::string welcome;
+	std::string welcomeWs;
+	boost::shared_ptr<std::string> welcomeHttp;
 	const int maxClients;
 };
 

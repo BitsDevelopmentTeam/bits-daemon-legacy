@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2011 by Terraneo Federico                               *
+ *   Copyright (C) 2011, 2012 by Terraneo Federico                         *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -27,6 +27,7 @@
 
 #include <sstream>
 #include <boost/regex.hpp>
+#include <boost/lexical_cast.hpp>
 #include "base64.h"
 #include "sha1.h"
 #include "push_server.h"
@@ -57,10 +58,19 @@ void PushServer::send(const string& message)
 
 void PushServer::welcomeMessage(const string& message)
 {
-	string encoded;
-	if(message.empty()==false) encoded=packAsTextFrame(message);
-	shared_ptr<string> data(new string(encoded));
-	io.post(bind(&PushServer::onWelcomeMessage,this,data));
+	string encodedWs;
+	if(message.empty()==false) encodedWs=packAsTextFrame(message);
+	shared_ptr<string> dataWs(new string(encodedWs));
+	static const string http200=
+		"HTTP/1.1 200 OK\r\n"
+		"Vary: Accept-Encoding\r\n"
+		"Connection: Close\r\n"
+		"Content-Type: text/json; charset=utf-8\r\n"
+		"Content-Length: "
+	;
+	shared_ptr<string> dataHttp(new string(http200+
+		lexical_cast<string>(message.length())+"\r\n\r\n"+message));
+	io.post(bind(&PushServer::onWelcomeMessage,this,dataWs,dataHttp));
 }
 
 PushServer::~PushServer()
@@ -89,6 +99,15 @@ string PushServer::packAsTextFrame(const string& data)
 	return result;
 }
 
+void PushServer::lastPacket(list<Client>::iterator it, shared_ptr<string> data)
+{
+	if(it->lastPacket) return;
+	it->lastPacket=true;
+	async_write(*it->sock,asio::buffer(*data),
+					bind(&PushServer::onWriteCompleted,this,
+					asio::placeholders::error,data,it));
+}
+
 void PushServer::serverMainLoop()
 {
 	shared_ptr<asio::ip::tcp::socket> newClient(new asio::ip::tcp::socket(io));
@@ -110,9 +129,11 @@ void PushServer::onSend(shared_ptr<string> data)
 	}
 }
 
-void PushServer::onWelcomeMessage(shared_ptr<string> data)
+void PushServer::onWelcomeMessage(shared_ptr<string> dataWs,
+		shared_ptr<string> dataHttp)
 {
-	welcome=*data;
+	welcomeWs=*dataWs;
+	welcomeHttp=dataHttp;
 }
 
 void PushServer::onClose()
@@ -129,7 +150,7 @@ void PushServer::onConnect(const boost::system::error_code& ec,
 	// socket file descriptors exceeds the result of "ulimit -n"
 	// the number of sockets beyond that hang, and the server suddenly
 	// goes to 100% CPU utilization. This condition is recovered as
-	// clients are killed. Anyway, to prevent the DOS potential of
+	// clients are killed. Anyway, to prevent the DoS potential of
 	// a 100% CPU consumption, sockets beyond maxClients are dropped.
 	if(!ec && clients.size()<=maxClients)
 	{
@@ -166,6 +187,8 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 	}
 
 	istream is(it->readData.get());
+	bool h0=false; //H0: header containing "GET /data.json HTTP/1.1"
+	static const regex h0r("GET /data\\.json HTTP/1\\.[01]\r?");
 	bool h1=false; //H1: header containing "Upgrade: websocket"
 	static const regex h1r("Upgrade\\: websocket\r?");
 	bool h2=false; //H2: header containing "Connection: Upgrade"
@@ -177,13 +200,16 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 	string line;
 	while(getline(is,line))
 	{
+		if(regex_match(line,h0r))      { h0=true; continue; }
 		if(regex_match(line,h1r))      { h1=true; continue; }
 		if(regex_match(line,h2r))      { h2=true; continue; }
 		if(line.empty() || line=="\r") { h3=true; continue; }
 		if(regex_match(line,challengeMatch))
 			challenge=regex_replace(line,challengeReplace,"",format_all);
 	}
-	if(h1==false || h2==false || h3==false || challenge.empty())
+	if(h3==false ||
+	   (h0==false && (h1==false || h2==false || challenge.empty())) ||
+	   (h0==true && (h1==true || h2==true || challenge.empty()==false)))
 	{
 		static const string error404=
 			"HTTP/1.1 404 Not Found\r\n"
@@ -193,9 +219,14 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 			"Content-Type: text/html; charset=iso-8859-1\r\n\r\n"
 			"<html><head><title>404 Not Found</title></head><body>\n"
 			"<h1>Not Found</h1></body></html>\n"
-			;
-		it->sock->send(asio::buffer(error404));
-		clients.erase(it);
+		;
+		lastPacket(it,shared_ptr<string>(new string(error404)));
+		return;
+	}
+	if(h0)
+	{
+		//Serve the valid HTTP GET
+		lastPacket(it,welcomeHttp);
 		return;
 	}
 
@@ -209,7 +240,7 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 	unsigned char hash[sha1size];
 	sha1binary(challenge+magic,hash);
 	shared_ptr<string> data(
-		new string(header+base64_encode(hash,sha1size)+"\r\n\r\n"+welcome));
+		new string(header+base64_encode(hash,sha1size)+"\r\n\r\n"+welcomeWs));
 	async_write(*it->sock,asio::buffer(*data),
 				bind(&PushServer::onWriteCompleted,this,
 				asio::placeholders::error,data,it));
@@ -224,6 +255,6 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 void PushServer::onWriteCompleted(const system::error_code& ec,
 		shared_ptr<string> data, list<Client>::iterator it)
 {
-	if(!ec) return;
-	clients.erase(it); //Errors while writing? close the socket
+	if(!ec && !it->lastPacket) return;
+	clients.erase(it); //Close the socket
 }
