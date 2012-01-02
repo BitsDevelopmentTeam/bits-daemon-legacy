@@ -122,7 +122,7 @@ void PushServer::onSend(shared_ptr<string> data)
 {
 	for(list<Client>::iterator it=clients.begin();it!=clients.end();++it)
 	{
-		if(it->connectionUpgraded==false) continue;
+		if(it->connectionUpgraded==false || it->lastPacket) continue;
 		async_write(*it->sock,asio::buffer(*data),
 					bind(&PushServer::onWriteCompleted,this,
 					asio::placeholders::error,data,it));
