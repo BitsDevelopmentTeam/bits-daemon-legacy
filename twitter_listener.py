@@ -4,6 +4,7 @@ import twitter
 import threading
 from time import sleep
 from config import TwitterConfiguration
+from common import *
 
 
 class Twitter(threading.Thread):
