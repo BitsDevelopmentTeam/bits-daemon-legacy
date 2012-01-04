@@ -5,21 +5,22 @@ import socket
 import select
 import threading
 import ws
+import json
 from common import *
 from config import PushConfiguration
 
 pushconf = PushConfiguration()
 
 class PushService:
-    def __init__(self, start_status):
+    def __init__(self, start_dict):
         self.push_services = [StandardPush, Websockets_beta4]
         
-        self.status = start_status
+        self.dict = start_dict
         self.push_istances = []
         
     def starting(self):
         for service in self.push_services:
-            s = service(start_status = self.status)
+            s = service(start_dict = self.dict)
             s.start()
             self.push_istances.append(s)
             
@@ -28,18 +29,15 @@ class PushService:
             service.stop()
             service._Thread__stop()
     
-    def change_status(self, status):
-        self.status = status
+    def change_dictionary(self, dictionary):
+        self.dict = dictionary
         for service in self.push_istances:
-            service.change_status(status)
+            service.change_dictionary(dictionary)
     
-    def send_message(self, msg):
-        for service in self.push_istances:
-            service.send_message(msg)
     
 
 class StandardPush(threading.Thread):
-    def __init__(self, start_status=None):
+    def __init__(self, start_dict=None):
     
         threading.Thread.__init__(self)
         
@@ -50,7 +48,10 @@ class StandardPush(threading.Thread):
         self.srv_maxlisten = stdconf.maxlisten
         self.srv_max_conn = stdconf.maxconn
         self.useThreads = stdconf.useThreads
-        self.status = start_status
+        if start_dict["status"]["value"] == "open":
+            self.status = True
+        else:
+            self.status = False
         
         self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP socket
         self.srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1) #Keepalive TCP
@@ -69,9 +70,15 @@ class StandardPush(threading.Thread):
             self.srv_sock.setblocking(0) 
             self.events.append(self.srv_sock)
     
-    def change_status(self, status):
-        self.status = status
+    def change_dictionary(self, dictionary):
+        if dictionary["status"]["value"] == "open":
+            self.status = True
+        else:
+            self.status = False
         self.broadcast_message(self.statusString())
+        
+    def send_message(self, msg):
+        self.broadcast_message(msg)
     
     def statusString(self):
         if self.status:
@@ -165,15 +172,20 @@ class StandardPush(threading.Thread):
         
 
 class Websockets_beta4(threading.Thread):
-    def __init__(self, start_status=None):
+    def __init__(self, start_dict=None):
         threading.Thread.__init__(self)
         
+        #Server parameters
         stdconf = pushconf.Websockets_beta4()
-        
         self.srv_port = stdconf.port
         
+        #Server init
         self.sock = ws.PushServer(self.srv_port)
-        self.sock.welcomeMessage(self.bool_to_text(start_status))
+        
+        self.sock.welcomeMessage(self.dict_to_json(start_dict))
+        
+    def dict_to_json(self, dictionary):
+        return json.dumps(dictionary, sort_keys=False)
     
     def bool_to_text(self, status):
         if status:
@@ -181,18 +193,18 @@ class Websockets_beta4(threading.Thread):
         else:
             return "close"
         
-    def change_status(self, status):
-        self.sock.welcomeMessage(self.bool_to_text(start_status))
-        self.sock.send(self.bool_to_text(status))
+    def change_dictionary(self, dictionary):
+        self.sock.welcomeMessage(self.dict_to_json(dictionary))
+        self.sock.send(self.dict_to_json(dictionary))
     
     def send_message(self, msg):
-        self.sock.send(msg)
+        self.sock.send(msg.replace("\n",""))
     
     def stop(self):
         del self.sock
         
 class Websockets(threading.Thread): #BROKEN!
-    def __init__(self, start_status=None):
+    def __init__(self, start_dict=None):
         threading.Thread.__init__(self)
         
         stdconf = pushconf.Websockets()
@@ -202,7 +214,7 @@ class Websockets(threading.Thread): #BROKEN!
         self.srv_maxlisten = stdconf.maxlisten
         self.srv_max_conn = stdconf.maxconn
         self.useThreads = stdconf.useThreads
-        self.status = start_status
+        self.dict = start_dict
         
         self.srv_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) #TCP socket
         self.srv_sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1) #Keepalive TCP

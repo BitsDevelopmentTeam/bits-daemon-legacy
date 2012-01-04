@@ -2,10 +2,10 @@
 
 # Can this WebSocket server withstand the c10k shitstorm? Let's find out...
 
-HOST='10.0.0.1'
+HOST='87.14.166.143'
 PORT='3389'
 TIMEOUT='600' # Clients die after this timeout, if not killed before
-NUMCLIENTS='5000'
+NUMCLIENTS='10000'
 
 trap ctrl_c INT
 

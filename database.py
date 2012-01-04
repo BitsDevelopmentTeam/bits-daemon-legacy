@@ -4,6 +4,7 @@
 import MySQLdb
 from common import *
 from config import DatabaseConfiguration
+from base64 import b64encode,b64decode
 
 class Database:
     def __init__(self):
@@ -42,14 +43,24 @@ class Database:
                 raise SystemExit
         return cursor
     
-    def status(self, s = None, fromWebsite = False): 
+    def status(self, s = None, fromWebsite = False, showtimestamp = False): 
         if s == None:
             debugMessage("Getting current status from database")
-            cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
-            if cursor.fetchall() == ((1,),): #in questo modo Se il database e' vuoto ritorna False
-                return True
-            else:
-                return False
+            if showtimestamp:
+                data = self.query("""SELECT value, timestamp FROM Status ORDER BY timestamp DESC LIMIT 1""").fetchall()
+                if len(data) == 0:
+                    return (False, None) #closed if no data in db
+                else:
+                    data = list(data[0])
+                    data[0] = bool(data[0])
+                    data[1] = str(data[1])
+                    return data #ex: [True, "1970-01-01 00:00:00"]
+            else
+                cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
+                if cursor.fetchall() == ((1,),): #closed if no data in db
+                    return True
+                else:
+                    return False
         else:
             curr_status = self.status()
             if curr_status != s:
@@ -99,11 +110,53 @@ class Database:
     def user_exists(self, uid): 
         cursor = self.query("""SELECT COUNT(*) FROM Users WHERE userid = %s""" % uid)
         return bool(cursor.fetchall()[0][0])
+    
+    def userid_to_nick(self, uid):
+        data = self.query("""SELECT username FROM Users WHERE userid = %s""" % uid).fetchall()
+        if len(data) == 0:
+            return None
+        else:
+            return data[0][0]
 
     def user_logged_in(self, uid): 
         debugMessage("Logging out all logged users")
         cursor = self.query("""SELECT COUNT(*) FROM Presence WHERE logout is null AND userid = %s""" % uid)
         return bool(cursor.fetchall()[0][0])
+        
+    def get_last_temperature(self):
+        debugMessage("Getting last temperature from database")
+        
+        data = self.query("""SELECT DISTINCT sensor FROM Temperature""").fetchall()
+        if len(data) == 0:
+            return None
+            
+        sensors = [s[0] for s in dati] #ex: [0, 1]
+        
+        datadict = {}
+        
+        for sensor in sensors:        
+            data = self.query("""SELECT value,timestamp FROM Temperature WHERE sensor=%d ORDER BY timestamp DESC LIMIT 1""" % sensor).fetchall()
+            #data style: ((19.968800000000002, datetime.datetime(2012, 1, 4, 14, 3, 11)),)
+            if len(data) != 0:
+                data = list(data[0])
+                data[1] = str(data[1]) #convert date to string format
+                datadict[sensor] = data
+        
+        return datadict #ex: {0:[19.9, "1970-01-01 00:00:00"]}
+    
+    def get_last_message(self):
+        debugMessage("Getting last message from database")
+        data = self.query("""SELECT userid,timestamp,message FROM Message ORDER BY timestamp DESC LIMIT 1""").fetchall()
+        if len(data) == 0:
+            return None
+        else:
+            data = list(data[0]) #data[0] is like (2L, datetime.datetime(2011, 12, 14, 15, 31, 42), 'dGVzdGluZwo=')
+            data[0] = self.userid_to_nick(data[0])
+            data[1] = str(data[1])
+            data[2] = b64decode(data[2]) #be careful for XSS!
+            return data
+            
+        
 
     def store_temperature(self, value, sensor_id): 
         cursor = self.query(

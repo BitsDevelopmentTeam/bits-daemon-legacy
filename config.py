@@ -13,12 +13,18 @@ class MainConfiguration:
         bind_address = "10.0.0.1"
         max_wait_sock = 1
     
-    
 class DatabaseConfiguration:
     user = "bits"
     passwd = "<insert-db-passwd-here>"
     dbname = "bitsdb"
     host = "localhost"
+    
+class TwitterConfiguration:
+    consumer_key = "YOUR_CONSUMER_KEY"
+    consumer_secret = "YOUR_CONSUMER_SECRET"
+    access_token_key = "YOUR_ACCESS_TOKEN_KEY"
+    access_token_secret = "YOUR_ACCESS_TOKEN_SECRET"
+    sleeptime = 60
     
 class PushConfiguration:
     class Standard:

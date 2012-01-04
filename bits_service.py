@@ -15,6 +15,7 @@ from base64 import b64encode,b64decode
 
 import pushserver
 import database
+import twitter_listener
 from common import *
 from config import MainConfiguration
 
@@ -36,7 +37,6 @@ class BitsService:
 
     def __init__(self):
         conf = MainConfiguration()
-        #var_list = dir(conf)    
         
         phpconf = conf.Php()
         self.php_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -62,8 +62,53 @@ class BitsService:
         self.db = database.Database()
         self.fonera.status = self.db.status()
         
-        self.push_srv = pushserver.PushService(self.fonera.status)
+        self.push_srv = pushserver.PushService(self.data_dict())
         self.push_srv.starting()
+        
+        self.twitter = twitter_listener.TwitterListener(self.push_message_incoming)
+        self.twitter.start()
+        
+    def data_dict(self):
+        d = {}
+        data = self.db.status(showtimestamp=True) #[True, "1970-01-01 00:00:00"]
+
+        elif data[0]:
+            data[0] = "open"
+        else:
+            data[0] = "close"
+            
+        d["status"] = {}
+        d["status"]["value"] = data[0]
+        if data[1] != None:
+            d["status"]["timestamp"] = data[1]
+        
+        data = self.db.get_last_temperature() #ex: {0:[19.9, "1970-01-01 00:00:00"]}
+        if data == None:
+            data = {}
+        
+
+        if (0 in data):
+            d["tempint"] = {}
+            d["tempint"]["value"] = data[0][0]
+            d["tempint"]["timestamp"] = data[0][1]
+        
+        if (1 in data):
+            d["tempext"] = {}
+            d["tempext"]["value"] = data[1][0]
+            d["tempext"]["timestamp"] = data[1][1]
+
+        
+        data = self.db.get_last_message()
+        if data != None:
+            d["msg"] = {}
+            d["msg"]["user"] = data[0]
+            d["msg"]["timestamp"] = data[1]
+            d["msg"]["value"] = data[2]
+            
+        d["version"] = 2
+        
+        return d
+        
     
     def server(self):
         debugMessage("Starting PHP socket server")
@@ -79,11 +124,18 @@ class BitsService:
         self.fonera_sock.setblocking(0)
         self.events.append(self.fonera_sock)
             
-    
     def disconnect(self):   
         # Brutally closes fonera's socket
-        if self.fonera.connected: self.fonera_conn.close()
-        self.fonera_sock.close()
+        if self.fonera.connected:
+            self.fonera_disconnect()
+            
+        self.events.remove(self.fonera_sock)
+        
+        try:
+            self.fonera_sock.close()
+        except:
+            pass
+        
         for conn in self.php_connections:
             conn.close()
         # Brutally closes php socket
@@ -96,6 +148,8 @@ class BitsService:
         #killing push services
         self.push_srv.stopping()
         
+        self.twitter._Thread__stop()
+        
     def fonera_disconnect(self):
         debugMessage("Disconnecting from fonera")
         self.fonera.connected = False
@@ -105,8 +159,8 @@ class BitsService:
         except:
             pass
         
-    def push_clients_alert(self, status):
-        self.push_srv.change_status(status)
+    def self.push_update(self):
+        self.push_srv.change_dictionary(self.data_dict())
                 
     def send_fonera_msg(self, msg):
         try:
@@ -142,7 +196,7 @@ class BitsService:
                     
                     if self.db.status(status, False): #Se ritorna True lo stato è stato cambiato in quello scelto
                         self.fonera.status = status
-                        self.push_clients_alert(status)
+                        self.push_update()
                     else:
                         #Siamo già nello stato in cui vuoi cambiare!
                         debugMessage("Fonera trying to change to actual status instead of new one")
@@ -178,6 +232,7 @@ class BitsService:
                         debugMessage("Detected temperature %f °C from sensor %d" % (value, sensor))
                         # Aggiungo la temperatura nel database
                         self.db.store_temperature(value, sensor)
+                        self.push_update()
                     except:
                         debugMessage("Failed to understand command: %s" % msg)
                 else:
@@ -205,7 +260,7 @@ class BitsService:
                         self.db.status(status, True) # Aggiorno il database con il nuovo status inviato da php
                         self.fonera.status = status
                         self.fonera_change_status(status) #Avviso la fonera del cambio di stato
-                        self.push_clients_alert(status)
+                        self.push_update()
                 except:
                     debugMessage("Recived invalid status message from PHP")
                     self.php_disconnect_client(conn)
@@ -234,13 +289,13 @@ class BitsService:
                     p = msg.split(" ")
                     uid = int(p[1])
                     b64_msg = p[2]
-                    plainmsg=b64decode(b64_msg) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
-                    b64_msg=b64encode(plainmsg) #Goodbye injection padding
+                    plainmsg = b64decode(b64_msg) #b64_msg could contain a padding, like "bG9sCg== ; drop database bitsdb; --"
+                    b64_msg = b64encode(plainmsg) #Goodbye injection padding
                     #Mi e' arrivato il testo
                     #Salva il testo sul db
                     if self.db.user_exists(uid):
                         self.db.store_msg(uid, b64_msg)
-                        #Invia il testo alla fonera
+                        self.push_update()
                         self.fonera_display_text_plain(b64_msg)
                     else:
                         debugMessage("The specified user '%d' does not exist in the database" % uid)
@@ -267,7 +322,11 @@ class BitsService:
             conn.close()
         except:
             pass
-            
+    
+    def push_message_incoming(self, text, author):
+        pass
+    
+    
     def fonera_display_text(self, text):
         if self.fonera.connected:
             return self.send_fonera_msg("message "+b64encode(text)+"\n")
