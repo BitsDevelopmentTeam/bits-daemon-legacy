@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import twitter
+import threading
 from time import sleep
 from config import TwitterConfiguration
 
@@ -12,6 +13,7 @@ class Twitter(threading.Thread):
            
         self.config = TwitterConfiguration()
         
+        debugMessage("Configuring Twitter client")
         self.api = twitter.Api(consumer_key = self.config.consumer_key,
                   consumer_secret = self.config.consumer_secret,
                   access_token_key = self.config.access_token_key,
@@ -24,12 +26,14 @@ class Twitter(threading.Thread):
         self.enabled = True
 
     def run(self):
+        debugMessage("Twitter client in main loop")
         self.check_replies(first=True)
         while self.enabled:
             self.check_replies()
             sleep(self.sleeptime)
             
     def check_replies(self, first=False):
+        debugMessage("Twitter client checking for replies")
         try:
             status = api.GetReplies()
         except:

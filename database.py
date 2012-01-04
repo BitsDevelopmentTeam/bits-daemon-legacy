@@ -47,15 +47,15 @@ class Database:
         if s == None:
             debugMessage("Getting current status from database")
             if showtimestamp:
-                data = self.query("""SELECT value, timestamp FROM Status ORDER BY timestamp DESC LIMIT 1""").fetchall()
+                data = self.query("""SELECT value, modifiedby, timestamp FROM Status ORDER BY timestamp DESC LIMIT 1""").fetchall()
                 if len(data) == 0:
-                    return (False, None) #closed if no data in db
+                    return (False, None, None) #closed if no data in db
                 else:
                     data = list(data[0])
                     data[0] = bool(data[0])
-                    data[1] = str(data[1])
-                    return data #ex: [True, "1970-01-01 00:00:00"]
-            else
+                    data[2] = str(data[1])
+                    return data #ex: [True, 0, "1970-01-01 00:00:00"]
+            else:
                 cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
                 if cursor.fetchall() == ((1,),): #closed if no data in db
                     return True
@@ -130,7 +130,7 @@ class Database:
         if len(data) == 0:
             return None
             
-        sensors = [s[0] for s in dati] #ex: [0, 1]
+        sensors = [s[0] for s in data] #ex: [0, 1]
         
         datadict = {}
         

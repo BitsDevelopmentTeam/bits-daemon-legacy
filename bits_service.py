@@ -65,22 +65,23 @@ class BitsService:
         self.push_srv = pushserver.PushService(self.data_dict())
         self.push_srv.starting()
         
-        self.twitter = twitter_listener.TwitterListener(self.push_message_incoming)
+        self.twitter = twitter_listener.Twitter(self.push_message_incoming)
         self.twitter.start()
         
     def data_dict(self):
         d = {}
         data = self.db.status(showtimestamp=True) #[True, "1970-01-01 00:00:00"]
 
-        elif data[0]:
+        if data[0]:
             data[0] = "open"
         else:
             data[0] = "close"
             
         d["status"] = {}
         d["status"]["value"] = data[0]
-        if data[1] != None:
-            d["status"]["timestamp"] = data[1]
+        if data[1] != None and data[2] != None:
+            d["status"]["modifiedby"] = data[1]
+            d["status"]["timestamp"] = data[2]
         
         data = self.db.get_last_temperature() #ex: {0:[19.9, "1970-01-01 00:00:00"]}
         if data == None:
@@ -159,7 +160,7 @@ class BitsService:
         except:
             pass
         
-    def self.push_update(self):
+    def push_update(self):
         self.push_srv.change_dictionary(self.data_dict())
                 
     def send_fonera_msg(self, msg):
@@ -324,7 +325,7 @@ class BitsService:
             pass
     
     def push_message_incoming(self, text, author):
-        pass
+        debugMessage("Reciving a twit from "+str(author)+" with message "+str(text))
     
     
     def fonera_display_text(self, text):
