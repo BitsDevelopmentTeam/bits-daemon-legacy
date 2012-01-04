@@ -80,7 +80,10 @@ class BitsService:
         d["status"] = {}
         d["status"]["value"] = data[0]
         if data[1] != None and data[2] != None:
-            d["status"]["modifiedby"] = data[1]
+            if data[1] == 0:
+                d["status"]["modifiedby"] = "bits"
+            else:
+                d["status"]["modifiedby"] = "manual"
             d["status"]["timestamp"] = data[2]
         
         data = self.db.get_last_temperature() #ex: {0:[19.9, "1970-01-01 00:00:00"]}
