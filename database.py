@@ -53,7 +53,7 @@ class Database:
                 else:
                     data = list(data[0])
                     data[0] = bool(data[0])
-                    data[2] = str(data[1])
+                    data[2] = str(data[2])
                     return data #ex: [True, 0, "1970-01-01 00:00:00"]
             else:
                 cursor = self.query("""SELECT value FROM Status ORDER BY timestamp DESC LIMIT 1""")
