@@ -36,7 +36,7 @@ class Twitter(threading.Thread):
     def check_replies(self, first=False):
         debugMessage("Twitter client checking for replies")
         try:
-            status = self.api.GetReplies()
+            status = self.api.GetReplies(since_id=self.last_reply)
         except:
             debugMessage("Twitter error")
             return
@@ -46,7 +46,7 @@ class Twitter(threading.Thread):
         if first:
             self.last_reply = reply_id
             
-        elif self.last_reply != reply_id:
+        elif self.last_reply > reply_id:
             self.last_reply = reply_id
             
             msg = " ".join(status[0].text.split(" ")[1:])
