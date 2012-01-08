@@ -36,9 +36,9 @@ class Twitter(threading.Thread):
     def check_replies(self, first=False):
         debugMessage("Twitter client checking for replies")
         try:
-            status = api.GetReplies()
+            status = self.api.GetReplies()
         except:
-            self.enabled = False
+            debugMessage("Twitter error")
             return
             
         reply_id = str(status[0].id)
