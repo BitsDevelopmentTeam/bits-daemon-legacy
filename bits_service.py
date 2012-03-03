@@ -117,7 +117,7 @@ class BitsService:
             d["msg"]["timestamp"] = data[1]
             d["msg"]["value"] = data[2]
             
-        d["version"] = 2
+        d["version"] = 3
         
         return d
         
