@@ -95,15 +95,15 @@ class BitsService:
 
         if (0 in data):
             d["tempint"] = {}
-            d["tempint"]["value"] = data[0][0][0]
-            d["tempint"]["timestamp"] = data[0][1][1]
+            d["tempint"]["value"] = data[0][0][0]      # [(21.9, '2012-03-03 14:47:10'), (21.9, '2012-03-03 14:37:04'), (21.9, '2012-03-03 14:26:58')]
+            d["tempint"]["timestamp"] = data[0][0][1]
             
             d["tempinthist"] = [{"value":a, "timestamp":b} for a,b in data[0]]
         
         if (1 in data):
             d["tempext"] = {}
             d["tempext"]["value"] = data[1][0][0]
-            d["tempext"]["timestamp"] = data[1][1][1]
+            d["tempext"]["timestamp"] = data[1][0][1]
             
             d["tempexthist"] = [{"value":a, "timestamp":b} for a,b in data[1]]
         
