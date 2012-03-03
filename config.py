@@ -3,6 +3,9 @@
 
 
 class MainConfiguration:
+    
+    number_last_temperatures = 5    
+    
     class Php:
         port = 56343
         bind_address = "127.0.0.1"
@@ -12,6 +15,7 @@ class MainConfiguration:
         port = 56345
         bind_address = "10.0.0.1"
         max_wait_sock = 1
+        
     
 class DatabaseConfiguration:
     user = "bits"

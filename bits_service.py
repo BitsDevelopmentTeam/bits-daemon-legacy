@@ -59,6 +59,8 @@ class BitsService:
         self.php_connections = []
         self.events = []
         
+        self.number_last_temperatures = conf.number_last_temperatures
+        
         self.db = database.Database()
         self.fonera.status = self.db.status()
         
@@ -86,20 +88,26 @@ class BitsService:
                 d["status"]["modifiedby"] = "manual"
             d["status"]["timestamp"] = data[2]
         
-        data = self.db.get_last_temperature() #ex: {0:[19.9, "1970-01-01 00:00:00"]}
+        data = self.db.get_last_temperature(self.number_last_temperatures) #ex: {0:[(21.9, '2012-03-03 14:47:10'), (21.9, '2012-03-03 14:37:04'), (21.9, '2012-03-03 14:26:58')]}
         if data == None:
             data = {}
         
 
         if (0 in data):
             d["tempint"] = {}
-            d["tempint"]["value"] = data[0][0]
-            d["tempint"]["timestamp"] = data[0][1]
+            d["tempint"]["value"] = data[0][0][0]
+            d["tempint"]["timestamp"] = data[0][1][1]
+            
+            d["tempinthist"] = [{"value":a, "timestamp":b} for a,b in data[0]]
         
         if (1 in data):
             d["tempext"] = {}
-            d["tempext"]["value"] = data[1][0]
-            d["tempext"]["timestamp"] = data[1][1]
+            d["tempext"]["value"] = data[1][0][0]
+            d["tempext"]["timestamp"] = data[1][1][1]
+            
+            d["tempexthist"] = [{"value":a, "timestamp":b} for a,b in data[1]]
+        
+        
 
         
         data = self.db.get_last_message()
