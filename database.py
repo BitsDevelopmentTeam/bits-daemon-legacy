@@ -135,12 +135,12 @@ class Database:
         datadict = {}
         
         for sensor in sensors:        
-            data = self.query("""SELECT value,timestamp FROM Temperature WHERE sensor=%d ORDER BY timestamp DESC LIMIT %d""" % sensor,num).fetchall()
+            data = self.query("""SELECT value,timestamp FROM Temperature WHERE sensor=%d ORDER BY timestamp DESC LIMIT %d""" % (sensor,num)).fetchall()
             #data style: [(21.921900000000001, datetime.datetime(2012, 3, 3, 14, 47, 10)),
             #   (21.921900000000001, datetime.datetime(2012, 3, 3, 14, 37, 4)),
             #   (21.921900000000001, datetime.datetime(2012, 3, 3, 14, 26, 58))]
             if len(data) != 0:
-                data = [(a, str(b)) for a,b in data[0]]
+                data = [(a, str(b)) for a,b in data]
                 datadict[sensor] = data
         
         return datadict #ex: {0:[19.9, "1970-01-01 00:00:00"]}
