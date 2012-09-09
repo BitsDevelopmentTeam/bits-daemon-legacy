@@ -4,7 +4,7 @@
 
 class MainConfiguration:
     
-    number_last_temperatures = 5    
+    number_last_temperatures = 100    
     
     class Php:
         port = 56343

@@ -174,6 +174,7 @@ class StandardPush(threading.Thread):
 class Websockets_beta4(threading.Thread):
     def __init__(self, start_dict=None):
         threading.Thread.__init__(self)
+
         
         #Server parameters
         stdconf = pushconf.Websockets_beta4()
@@ -182,6 +183,7 @@ class Websockets_beta4(threading.Thread):
         #Server init
         self.sock = ws.PushServer(self.srv_port)
         
+        self.dict = start_dict
         self.sock.welcomeMessage(self.dict_to_json(start_dict))
         
     def dict_to_json(self, dictionary):
@@ -194,8 +196,19 @@ class Websockets_beta4(threading.Thread):
             return "close"
         
     def change_dictionary(self, dictionary):
-        self.sock.welcomeMessage(self.dict_to_json(dictionary))
-        self.sock.send(self.dict_to_json(dictionary))
+        if dictionary != self.dict:
+            diff = {"tempint":[], "tempext":[], "version":4}
+            for temptype in ["tempint", "tempext"]:
+                for el in dictionary[temptype]:
+                    if not (el in self.dict[temptype]):
+                        diff[temptype].append(el)
+                        
+            if self.dict["status"] != dictionary["status"]:
+                diff["status"] = dictionary["status"]
+                
+            self.dict = dictionary
+            self.sock.welcomeMessage(self.dict_to_json(dictionary))
+            self.sock.send(self.dict_to_json(diff)) 
     
     def send_message(self, msg):
         self.sock.send(msg.replace("\n",""))
