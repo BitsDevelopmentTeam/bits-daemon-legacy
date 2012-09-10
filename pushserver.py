@@ -197,8 +197,10 @@ class Websockets_beta4(threading.Thread):
         
     def change_dictionary(self, dictionary):
         if dictionary != self.dict:
-            diff = {"tempint":[], "tempext":[], "version":4}
-            for temptype in ["tempint", "tempext"]:
+            diff = {"tempinthist": [], 
+                    "tempexthist": [], 
+                    "version": 4}
+            for temptype in ["tempinthist", "tempexthist"]:
                 for el in dictionary[temptype]:
                     if not (el in self.dict[temptype]):
                         diff[temptype].append(el)
