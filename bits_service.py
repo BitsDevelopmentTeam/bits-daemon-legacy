@@ -94,10 +94,10 @@ class BitsService:
         
 
         if (0 in data):
-            d["tempinthist"] = [{"value":a, "timestamp":b} for a,b in data[0]]
+            d["tempint"] = [{"value":a, "timestamp":b} for a,b in data[0]]
         
         if (1 in data):
-            d["tempexthist"] = [{"value":a, "timestamp":b} for a,b in data[1]]
+            d["tempext"] = [{"value":a, "timestamp":b} for a,b in data[1]]
 
         
         data = self.db.get_last_message()
