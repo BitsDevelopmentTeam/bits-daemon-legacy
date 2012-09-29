@@ -29,7 +29,7 @@ rm -rf stresstest_log_dir
 mkdir stresstest_log_dir
 echo -n "Starting $NUMCLIENTS clients... "
 for i in `seq $NUMCLIENTS`; do
-	echo -n "$HEADER" | nc -4 -q $TIMEOUT $HOST $PORT 1>stresstest_log_dir/$i.txt &
+	echo -n -e "$HEADER" | nc -4 -q $TIMEOUT $HOST $PORT 1>stresstest_log_dir/$i.txt &
 done
 echo "Done.\nUse Ctrl-C to kill clients"
 sleep $TIMEOUT

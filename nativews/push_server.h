@@ -86,10 +86,12 @@ private:
 
 		Client(boost::shared_ptr<boost::asio::ip::tcp::socket> sock)
 				: sock(sock), readData(new boost::asio::streambuf(maxSize)),
-				  connectionUpgraded(false), lastPacket(false) {}
+				  pendingWrites(0), connectionUpgraded(false),
+				  lastPacket(false) {}
 
 		boost::shared_ptr<boost::asio::ip::tcp::socket> sock;
 		boost::shared_ptr<boost::asio::streambuf> readData;
+		int pendingWrites;
 		bool connectionUpgraded;
 		bool lastPacket;
 	};

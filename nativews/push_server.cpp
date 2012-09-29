@@ -103,6 +103,7 @@ void PushServer::lastPacket(list<Client>::iterator it, shared_ptr<string> data)
 {
 	if(it->lastPacket) return;
 	it->lastPacket=true;
+	it->pendingWrites++;
 	async_write(*it->sock,asio::buffer(*data),
 					bind(&PushServer::onWriteCompleted,this,
 					asio::placeholders::error,data,it));
@@ -123,6 +124,7 @@ void PushServer::onSend(shared_ptr<string> data)
 	for(list<Client>::iterator it=clients.begin();it!=clients.end();++it)
 	{
 		if(it->connectionUpgraded==false || it->lastPacket) continue;
+		it->pendingWrites++;
 		async_write(*it->sock,asio::buffer(*data),
 					bind(&PushServer::onWriteCompleted,this,
 					asio::placeholders::error,data,it));
@@ -173,7 +175,8 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 {
 	if(ec)
 	{
-		clients.erase(it); //Errors while reading? close the socket
+		//Errors while reading? close the socket
+		lastPacket(it,shared_ptr<string>(new string));
 		return;
 	}
 
@@ -182,7 +185,8 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 		//See example in documentation of boost::asio::streambuf
 		it->readData->commit(bytesReceived);
 
-		clients.erase(it); //Unexpected data? close the socket
+		//Unexpected data? close the socket
+		lastPacket(it,shared_ptr<string>(new string));
 		return;
 	}
 
@@ -241,6 +245,7 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 	sha1binary(challenge+magic,hash);
 	shared_ptr<string> data(
 		new string(header+base64_encode(hash,sha1size)+"\r\n\r\n"+welcomeWs));
+	it->pendingWrites++;
 	async_write(*it->sock,asio::buffer(*data),
 				bind(&PushServer::onWriteCompleted,this,
 				asio::placeholders::error,data,it));
@@ -255,6 +260,11 @@ void PushServer::onClientData(const boost::system::error_code& ec,
 void PushServer::onWriteCompleted(const system::error_code& ec,
 		shared_ptr<string> data, list<Client>::iterator it)
 {
-	if(!ec && !it->lastPacket) return;
-	clients.erase(it); //Close the socket
+	it->pendingWrites--;
+	if(it->lastPacket && it->pendingWrites<=0)
+	{
+		clients.erase(it); //Close the socket
+		return;
+	}
+	if(ec) lastPacket(it,shared_ptr<string>(new string));
 }
